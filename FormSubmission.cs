@@ -63,7 +63,7 @@ namespace OrbitFundAPIDotnetEight.Controllers
                 string.IsNullOrWhiteSpace(teamInfo) &&
                 // (images == null || !images.Any()) &&
                 // video == null &&
-                (documents == null || !documents.Any()) &&
+                // (documents == null || !documents.Any()) &&
                 fundingGoal == 0 && // Assuming default is 0 if not sent
                 duration == 0 &&     // Assuming default is 0 if not sent
                 string.IsNullOrWhiteSpace(budgetBreakdown)
