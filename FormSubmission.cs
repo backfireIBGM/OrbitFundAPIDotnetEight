@@ -1,19 +1,23 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http; // Required for IFormFile
 using MySql.Data.MySqlClient;
-using System;
-using System.IO;
-using System.Collections.Generic;
-using System.Linq;
+using System; // For Path, Guid, FileStream, Exception
+using System.IO; // For Path, FileStream
+using System.Collections.Generic; // For List
+using System.Linq; // For LINQ methods like Any()
+using System.Threading.Tasks; // For Task
 
 namespace OrbitFundAPIDotnetEight.Controllers
 {
-    [ApiController]
-    [Route("api/[controller]")]
+    [ApiController] // Indicates this is an API controller
+    [Route("api/[controller]")] // Defines the base route, e.g., /api/submission
     public class SubmissionController : ControllerBase
     {
         private readonly ILogger<SubmissionController> _logger;
         private readonly IConfiguration _configuration;
+
+        // Define a directory to save uploads. Ensure this directory exists and has write permissions.
+        // In a real app, this path would likely be configured externally (e.g., appsettings.json).
         private readonly string _uploadDirectory = Path.Combine(Directory.GetCurrentDirectory(), "uploads");
 
         public SubmissionController(ILogger<SubmissionController> logger, IConfiguration configuration)
@@ -21,6 +25,7 @@ namespace OrbitFundAPIDotnetEight.Controllers
             _logger = logger;
             _configuration = configuration;
 
+            // Ensure the upload directory exists on startup.
             if (!Directory.Exists(_uploadDirectory))
             {
                 try
@@ -31,29 +36,35 @@ namespace OrbitFundAPIDotnetEight.Controllers
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Failed to create upload directory: {Directory}", _uploadDirectory);
+                    // Depending on your app's requirements, you might want to throw here
+                    // if file uploads are critical for startup. For testing, logging is fine.
                 }
             }
         }
 
-        [HttpPost]
+        [HttpPost] // This method handles HTTP POST requests to /api/submission
+        // The 'name' attribute in the HTML form inputs will be used for model binding.
+        // For files, use IFormFile. For text, you can use string or other types.
         public async Task<IActionResult> HandleMissionSubmission(
-            string? title, string? description, string? goals, string? type,
-            DateTime? launchDate, string? teamInfo,
-            IFormFileCollection? images, // Nullable collection
-            IFormFile? video,          // Nullable
-            IFormFileCollection? documents, // Nullable collection
-            decimal fundingGoal,
-            int duration,
+            string? title, // Made all parameters nullable for broader testing
+            string? description,
+            string? goals,
+            string? type,
+            DateTime? launchDate,
+            string? teamInfo,
+            IFormFileCollection? images, // Nullable collection for multiple files
+            IFormFile? video,          // Nullable for optional single file
+            IFormFileCollection? documents, // Nullable collection for optional multiple files
+            decimal fundingGoal,      // Using decimal for currency
+            int duration,             // If not provided, will default to 0
             string? budgetBreakdown,
-            string? rewards
+            string? rewards           // Nullable string for optional rewards
         )
         {
-            // --- Relaxed Initial Validation for Testing ---
-            // Removed the strict check for ALL fields being non-whitespace.
-            // We'll still do minimal checks if the caller actually sent data.
-            
-            // A very basic check: did we get *any* data, or is the request truly empty?
-            // This is a heuristic for testing; in production, you'd want stricter validation.
+            // --- TEMPORARILY DISABLED Initial Validation for Testing ---
+            // Commenting out the entire validation block to allow ANY submission to proceed.
+            // This is for debugging purposes only. Re-enable and refine once the API works.
+            /*
             if (
                 string.IsNullOrWhiteSpace(title) &&
                 string.IsNullOrWhiteSpace(description) &&
@@ -61,19 +72,18 @@ namespace OrbitFundAPIDotnetEight.Controllers
                 string.IsNullOrWhiteSpace(type) &&
                 !launchDate.HasValue &&
                 string.IsNullOrWhiteSpace(teamInfo) &&
-                // (images == null || !images.Any()) &&
-                // video == null &&
-                // (documents == null || !documents.Any()) &&
-                fundingGoal == 0 && // Assuming default is 0 if not sent
-                duration == 0 &&     // Assuming default is 0 if not sent
+                (images == null || !images.Any()) &&
+                video == null &&
+                (documents == null || !documents.Any()) &&
+                fundingGoal == 0 &&
+                duration == 0 &&
                 string.IsNullOrWhiteSpace(budgetBreakdown)
             )
             {
-                // If the request is *completely* empty, it's still likely a bad request from a functional standpoint.
-                // This prevents errors if no form data at all is sent.
                 _logger.LogWarning("Received a completely empty submission payload.");
                 return BadRequest("Submission payload is empty. Please provide some mission details.");
             }
+            */
 
             // --- Database Operation (Primary Goal) ---
             string? connectionString = _configuration.GetConnectionString("connectionString");
@@ -86,16 +96,19 @@ namespace OrbitFundAPIDotnetEight.Controllers
             List<string> savedImagePaths = new List<string>();
             string? savedVideoPath = null;
             List<string> savedDocPaths = new List<string>();
-            bool fileOperationsSucceeded = true;
+            bool fileOperationsSucceeded = true; // Flag to track if all file save operations completed without error.
 
             try
             {
                 using (MySqlConnection connection = new MySqlConnection(connectionString))
                 {
-                    await connection.OpenAsync();
+                    await connection.OpenAsync(); // Open the connection
 
                     // --- Prepare and execute the primary data insertion ---
-                    // The stored procedure MUST be able to handle NULL/empty values for all parameters.
+                    // !!! IMPORTANT !!!
+                    // Your stored procedure 'AddMissionData' MUST be able to accept ALL these parameters.
+                    // It must also be designed to handle NULL or default values (like 0 for numbers, or empty strings)
+                    // for fields that might not be provided by the client.
                     using (MySqlCommand command = new MySqlCommand("CALL AddMissionData(@pTitle, @pDescription, @pGoals, @pType, @pLaunchDate, @pTeamInfo, @pFundingGoal, @pDuration, @pBudgetBreakdown, @pRewards)", connection))
                     {
                         // Add parameters, providing DBNull.Value for null/empty fields that can be null in DB
@@ -103,14 +116,17 @@ namespace OrbitFundAPIDotnetEight.Controllers
                         command.Parameters.AddWithValue("@pDescription", description ?? (object)DBNull.Value);
                         command.Parameters.AddWithValue("@pGoals", goals ?? (object)DBNull.Value);
                         command.Parameters.AddWithValue("@pType", type ?? (object)DBNull.Value);
+                        // Handle nullable date: If launchDate is null, pass DBNull.Value
                         command.Parameters.AddWithValue("@pLaunchDate", launchDate.HasValue ? (object)launchDate.Value : DBNull.Value);
                         command.Parameters.AddWithValue("@pTeamInfo", teamInfo ?? (object)DBNull.Value);
-                        command.Parameters.AddWithValue("@pFundingGoal", fundingGoal); // If not provided, will be 0
-                        command.Parameters.AddWithValue("@pDuration", duration);     // If not provided, will be 0
+                        // Pass numbers directly; if not sent, they'll be their default (0) which your SP must handle.
+                        command.Parameters.AddWithValue("@pFundingGoal", fundingGoal);
+                        command.Parameters.AddWithValue("@pDuration", duration);
                         command.Parameters.AddWithValue("@pBudgetBreakdown", budgetBreakdown ?? (object)DBNull.Value);
+                        // Handle nullable rewards parameter
                         command.Parameters.AddWithValue("@pRewards", rewards ?? (object)DBNull.Value);
 
-                        await command.ExecuteNonQueryAsync();
+                        await command.ExecuteNonQueryAsync(); // Execute the stored procedure
                         _logger.LogInformation($"Successfully stored core mission data (potentially empty) for: '{title ?? "N/A"}'.");
                     }
 
@@ -205,7 +221,7 @@ namespace OrbitFundAPIDotnetEight.Controllers
                     {
                         _logger.LogWarning($"Some files were not saved successfully, but core mission data for '{title ?? "N/A"}' was saved.");
                     }
-                }
+                } // End of using MySqlConnection
 
                 return Ok($"Mission '{title ?? "N/A"}' core data submitted successfully! File upload issues may have occurred, check logs.");
             }
