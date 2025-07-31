@@ -37,17 +37,13 @@ namespace OrbitFundAPIDotnetEight.Controllers
 
         [HttpPost]
         public async Task<IActionResult> HandleMissionSubmission(
-            string? title, // Made all parameters nullable for broader testing
-            string? description,
-            string? goals,
-            string? type,
-            DateTime? launchDate,
-            string? teamInfo,
-            IFormFileCollection? images,
-            IFormFile? video,
-            IFormFileCollection? documents,
-            decimal fundingGoal, // These might have default values if not sent
-            int duration,      // These might have default values if not sent
+            string? title, string? description, string? goals, string? type,
+            DateTime? launchDate, string? teamInfo,
+            IFormFileCollection? images, // Nullable collection
+            IFormFile? video,          // Nullable
+            IFormFileCollection? documents, // Nullable collection
+            decimal fundingGoal,
+            int duration,
             string? budgetBreakdown,
             string? rewards
         )
