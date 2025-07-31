@@ -37,34 +37,47 @@ namespace OrbitFundAPIDotnetEight.Controllers
 
         [HttpPost]
         public async Task<IActionResult> HandleMissionSubmission(
-            string title,
-            string description,
-            string goals,
-            string type,
+            string? title, // Made all parameters nullable for broader testing
+            string? description,
+            string? goals,
+            string? type,
             DateTime? launchDate,
-            string teamInfo,
-            IFormFileCollection? images, // Made collection nullable
+            string? teamInfo,
+            IFormFileCollection? images,
             IFormFile? video,
             IFormFileCollection? documents,
-            decimal fundingGoal,
-            int duration,
-            string budgetBreakdown,
+            decimal fundingGoal, // These might have default values if not sent
+            int duration,      // These might have default values if not sent
+            string? budgetBreakdown,
             string? rewards
         )
         {
-            // --- Initial Data Validation ---
-            if (string.IsNullOrWhiteSpace(title) ||
-                string.IsNullOrWhiteSpace(description) ||
-                string.IsNullOrWhiteSpace(goals) ||
-                string.IsNullOrWhiteSpace(type) ||
-                string.IsNullOrWhiteSpace(teamInfo) ||
-                string.IsNullOrWhiteSpace(budgetBreakdown))
+            // --- Relaxed Initial Validation for Testing ---
+            // Removed the strict check for ALL fields being non-whitespace.
+            // We'll still do minimal checks if the caller actually sent data.
+            
+            // A very basic check: did we get *any* data, or is the request truly empty?
+            // This is a heuristic for testing; in production, you'd want stricter validation.
+            if (
+                string.IsNullOrWhiteSpace(title) &&
+                string.IsNullOrWhiteSpace(description) &&
+                string.IsNullOrWhiteSpace(goals) &&
+                string.IsNullOrWhiteSpace(type) &&
+                !launchDate.HasValue &&
+                string.IsNullOrWhiteSpace(teamInfo) &&
+                (images == null || !images.Any()) &&
+                video == null &&
+                (documents == null || !documents.Any()) &&
+                fundingGoal == 0 && // Assuming default is 0 if not sent
+                duration == 0 &&     // Assuming default is 0 if not sent
+                string.IsNullOrWhiteSpace(budgetBreakdown)
+            )
             {
-                _logger.LogWarning("Received submission with missing required text fields.");
-                return BadRequest("Please ensure all required fields (Title, Description, Goals, Type, Team Info, Budget Breakdown) are filled.");
+                // If the request is *completely* empty, it's still likely a bad request from a functional standpoint.
+                // This prevents errors if no form data at all is sent.
+                _logger.LogWarning("Received a completely empty submission payload.");
+                return BadRequest("Submission payload is empty. Please provide some mission details.");
             }
-
-            bool fileOperationsSucceeded = true;
 
             // --- Database Operation (Primary Goal) ---
             string? connectionString = _configuration.GetConnectionString("connectionString");
@@ -77,6 +90,7 @@ namespace OrbitFundAPIDotnetEight.Controllers
             List<string> savedImagePaths = new List<string>();
             string? savedVideoPath = null;
             List<string> savedDocPaths = new List<string>();
+            bool fileOperationsSucceeded = true;
 
             try
             {
@@ -84,39 +98,40 @@ namespace OrbitFundAPIDotnetEight.Controllers
                 {
                     await connection.OpenAsync();
 
+                    // --- Prepare and execute the primary data insertion ---
+                    // The stored procedure MUST be able to handle NULL/empty values for all parameters.
                     using (MySqlCommand command = new MySqlCommand("CALL AddMissionData(@pTitle, @pDescription, @pGoals, @pType, @pLaunchDate, @pTeamInfo, @pFundingGoal, @pDuration, @pBudgetBreakdown, @pRewards)", connection))
                     {
-                        command.Parameters.AddWithValue("@pTitle", title);
-                        command.Parameters.AddWithValue("@pDescription", description);
-                        command.Parameters.AddWithValue("@pGoals", goals);
-                        command.Parameters.AddWithValue("@pType", type);
+                        // Add parameters, providing DBNull.Value for null/empty fields that can be null in DB
+                        command.Parameters.AddWithValue("@pTitle", title ?? (object)DBNull.Value);
+                        command.Parameters.AddWithValue("@pDescription", description ?? (object)DBNull.Value);
+                        command.Parameters.AddWithValue("@pGoals", goals ?? (object)DBNull.Value);
+                        command.Parameters.AddWithValue("@pType", type ?? (object)DBNull.Value);
                         command.Parameters.AddWithValue("@pLaunchDate", launchDate.HasValue ? (object)launchDate.Value : DBNull.Value);
-                        command.Parameters.AddWithValue("@pTeamInfo", teamInfo);
-                        command.Parameters.AddWithValue("@pFundingGoal", fundingGoal);
-                        command.Parameters.AddWithValue("@pDuration", duration);
-                        command.Parameters.AddWithValue("@pBudgetBreakdown", budgetBreakdown);
+                        command.Parameters.AddWithValue("@pTeamInfo", teamInfo ?? (object)DBNull.Value);
+                        command.Parameters.AddWithValue("@pFundingGoal", fundingGoal); // If not provided, will be 0
+                        command.Parameters.AddWithValue("@pDuration", duration);     // If not provided, will be 0
+                        command.Parameters.AddWithValue("@pBudgetBreakdown", budgetBreakdown ?? (object)DBNull.Value);
                         command.Parameters.AddWithValue("@pRewards", rewards ?? (object)DBNull.Value);
 
                         await command.ExecuteNonQueryAsync();
-                        _logger.LogInformation($"Successfully stored core mission data for: '{title}'.");
+                        _logger.LogInformation($"Successfully stored core mission data (potentially empty) for: '{title ?? "N/A"}'.");
                     }
 
-                    // --- FILE SAVING LOGIC ---
+                    // --- FILE SAVING LOGIC (with null checks and individual try-catch) ---
+                    // (Keep the same file saving logic as before, with the CS8602 fixes)
 
                     // Save Mission Images
-                    // Added null check for 'images' collection and 'imageFile' within loop
-                    if (images != null && images.Any()) // Use .Any() for clarity, equivalent to Count > 0
+                    if (images != null && images.Any())
                     {
                         foreach (var imageFile in images)
                         {
-                            // Null check on imageFile itself, and then on FileName
                             if (imageFile != null && imageFile.Length > 0 && imageFile.FileName != null)
                             {
                                 try
                                 {
                                     string fileName = Guid.NewGuid().ToString() + Path.GetExtension(imageFile.FileName);
                                     string filePath = Path.Combine(_uploadDirectory, fileName);
-
                                     using (var stream = new FileStream(filePath, FileMode.Create))
                                     {
                                         await imageFile.CopyToAsync(stream);
@@ -129,16 +144,14 @@ namespace OrbitFundAPIDotnetEight.Controllers
                                     _logger.LogError(fileEx, "Failed to save image. Submitting form data without this file. Error: {Message}", fileEx.Message);
                                     fileOperationsSucceeded = false;
                                 }
-                            }
-                            else if (imageFile != null && (imageFile.FileName == null || imageFile.Length == 0)) {
+                            } else {
                                 _logger.LogWarning("Encountered an empty or null-named image file. Skipping.");
-                                fileOperationsSucceeded = false; // Or choose not to mark as failure if skipping empty is OK
+                                fileOperationsSucceeded = false;
                             }
                         }
                     }
 
                     // Save Mission Video
-                    // Added null check for 'video' and 'video.FileName'
                     if (video != null && video.Length > 0 && video.FileName != null)
                     {
                         try
@@ -159,16 +172,14 @@ namespace OrbitFundAPIDotnetEight.Controllers
                         }
                     } else if (video != null && (video.FileName == null || video.Length == 0)) {
                         _logger.LogWarning("Encountered an empty or null-named video file. Skipping.");
-                        fileOperationsSucceeded = false; // Or choose not to mark as failure
+                        fileOperationsSucceeded = false;
                     }
 
                     // Save Technical Documents
-                    // Added null check for 'documents' collection and 'docFile' within loop
                     if (documents != null && documents.Any())
                     {
                         foreach (var docFile in documents)
                         {
-                            // Null check for docFile and docFile.FileName
                             if (docFile != null && docFile.Length > 0 && docFile.FileName != null)
                             {
                                 try
@@ -187,21 +198,20 @@ namespace OrbitFundAPIDotnetEight.Controllers
                                     _logger.LogError(fileEx, "Failed to save document. Submitting form data without this file. Error: {Message}", fileEx.Message);
                                     fileOperationsSucceeded = false;
                                 }
-                            }
-                             else if (docFile != null && (docFile.FileName == null || docFile.Length == 0)) {
+                            } else {
                                 _logger.LogWarning("Encountered an empty or null-named document file. Skipping.");
-                                fileOperationsSucceeded = false; // Or choose not to mark as failure
+                                fileOperationsSucceeded = false;
                             }
                         }
                     }
 
                     if (!fileOperationsSucceeded)
                     {
-                        _logger.LogWarning($"Some files were not saved successfully, but core mission data for '{title}' was saved.");
+                        _logger.LogWarning($"Some files were not saved successfully, but core mission data for '{title ?? "N/A"}' was saved.");
                     }
-                } // End of using MySqlConnection
+                }
 
-                return Ok($"Mission '{title}' core data submitted successfully! File upload issues may have occurred, check logs.");
+                return Ok($"Mission '{title ?? "N/A"}' core data submitted successfully! File upload issues may have occurred, check logs.");
             }
             catch (MySqlException ex)
             {
