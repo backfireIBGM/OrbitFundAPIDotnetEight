@@ -96,22 +96,23 @@ namespace OrbitFundAPIDotnetEight.Controllers
 
                     // --- Prepare and execute the primary data insertion ---
                     // !!! IMPORTANT: The stored procedure name MUST be "AddFormSubmission" now !!!
-                    using (MySqlCommand command = new MySqlCommand("CALL AddFormSubmission(@pTitle, @pDescription, @pGoals, @pType, @pLaunchDate, @pTeamInfo, @pFundingGoal, @pDuration, @pBudgetBreakdown, @pRewards)", connection))
+                    string sqlString = "CALL AddFormSubmission(@pTitle, @pDescription, @pGoals, @pType, @pLaunchDate, @pTeamInfo, @pFundingGoal, @pDuration, @pBudgetBreakdown, @pRewards)";
+                    using (MySqlCommand command = new MySqlCommand(sqlString, connection))
                     {
                         // Add parameters, providing DBNull.Value for null/empty fields that can be null in DB
-                        command.Parameters.AddWithValue("@pTitle", title ?? (object)DBNull.Value);
+                        command.Parameters.AddWithValue("@pTitle", title);
                         command.Parameters.AddWithValue("@pDescription", description);
-                        command.Parameters.AddWithValue("@pGoals", goals ?? (object)DBNull.Value);
-                        command.Parameters.AddWithValue("@pType", type ?? (object)DBNull.Value);
+                        command.Parameters.AddWithValue("@pGoals", goals);
+                        command.Parameters.AddWithValue("@pType", type);
                         // Handle nullable date: If launchDate is null, pass DBNull.Value
-                        command.Parameters.AddWithValue("@pLaunchDate", launchDate.HasValue ? (object)launchDate.Value : DBNull.Value);
-                        command.Parameters.AddWithValue("@pTeamInfo", teamInfo ?? (object)DBNull.Value);
+                        command.Parameters.AddWithValue("@pLaunchDate", launchDate.HasValue);
+                        command.Parameters.AddWithValue("@pTeamInfo", teamInfo);
                         // Pass numbers directly; if not sent, they'll be their default (0) which your SP must handle.
                         command.Parameters.AddWithValue("@pFundingGoal", fundingGoal);
                         command.Parameters.AddWithValue("@pDuration", duration);
-                        command.Parameters.AddWithValue("@pBudgetBreakdown", budgetBreakdown ?? (object)DBNull.Value);
+                        command.Parameters.AddWithValue("@pBudgetBreakdown", budgetBreakdown);
                         // Handle nullable rewards parameter
-                        command.Parameters.AddWithValue("@pRewards", rewards ?? (object)DBNull.Value);
+                        command.Parameters.AddWithValue("@pRewards", rewards);
 
                         await command.ExecuteNonQueryAsync(); // Execute the stored procedure
                         _logger.LogInformation($"Successfully stored core mission data (potentially empty) for: '{title ?? "N/A"}'.");
