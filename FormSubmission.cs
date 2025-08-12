@@ -61,31 +61,21 @@ namespace OrbitFundAPIDotnetEight.Controllers
             string? rewards           // Nullable string for optional rewards
         )
         {
-            // --- TEMPORARILY DISABLED Initial Validation for Testing ---
-            // Commenting out the entire validation block to allow ANY submission to proceed.
-            // This is for debugging purposes only. Re-enable and refine once the API works.
-            /*
-            if (
-                string.IsNullOrWhiteSpace(title) &&
-                string.IsNullOrWhiteSpace(description) &&
-                string.IsNullOrWhiteSpace(goals) &&
-                string.IsNullOrWhiteSpace(type) &&
-                !launchDate.HasValue &&
-                string.IsNullOrWhiteSpace(teamInfo) &&
-                (images == null || !images.Any()) &&
-                video == null &&
-                (documents == null || !documents.Any()) &&
-                fundingGoal == 0 &&
-                duration == 0 &&
-                string.IsNullOrWhiteSpace(budgetBreakdown)
-            )
-            {
-                _logger.LogWarning("Received a completely empty submission payload.");
-                return BadRequest("Submission payload is empty. Please provide some mission details.");
-            }
-            */
-
-            // --- Database Operation (Primary Goal) ---
+            _logger.LogInformation("--- Incoming Submission Data ---");
+            _logger.LogInformation($"Title: {title ?? "NULL"}");
+            _logger.LogInformation($"Description: {description ?? "NULL"}");
+            _logger.LogInformation($"Goals: {goals ?? "NULL"}");
+            _logger.LogInformation($"Type: {type ?? "NULL"}");
+            _logger.LogInformation($"Launch Date: {launchDate?.ToString() ?? "NULL"}"); // Use ?. and ToString() for DateTime
+            _logger.LogInformation($"Team Info: {teamInfo ?? "NULL"}");
+            _logger.LogInformation($"Funding Goal: {fundingGoal}"); // numbers won't be null but 0 if not provided
+            _logger.LogInformation($"Duration: {duration}");       // numbers won't be null but 0 if not provided
+            _logger.LogInformation($"Budget Breakdown: {budgetBreakdown ?? "NULL"}");
+            _logger.LogInformation($"Rewards: {rewards ?? "NULL"}");
+            _logger.LogInformation($"Image Count: {(images != null ? images.Count : 0)}");
+            _logger.LogInformation($"Video Present: {(video != null ? "Yes" : "No")}");
+            _logger.LogInformation($"Document Count: {(documents != null ? documents.Count : 0)}");
+            _logger.LogInformation("--- End Incoming Submission Data ---");
             string? connectionString = _configuration.GetConnectionString("connectionString");
             if (string.IsNullOrEmpty(connectionString))
             {
