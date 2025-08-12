@@ -109,7 +109,7 @@ namespace OrbitFundAPIDotnetEight.Controllers
 
                     // --- Prepare and execute the primary data insertion ---
                     // !!! IMPORTANT: The stored procedure name MUST be "AddFormSubmission" now !!!
-                    string sqlString = "INSERT INTO FormSubmission(title, description, goals, type, launchDate, teamInfo, fundingGoal, duration, budgetBreakdown, rewards) VALUES (@p_title, @p_description, @p_goals, @p_type, @p_launchDate, @p_teamInfo, @p_fundingGoal, @p_duration, @p_budgetBreakdown, @p_rewards)";
+                    string sqlString = "INSERT INTO FormSubmissions(title, description, goals, type, launchDate, teamInfo, fundingGoal, duration, budgetBreakdown, rewards) VALUES (@p_title, @p_description, @p_goals, @p_type, @p_launchDate, @p_teamInfo, @p_fundingGoal, @p_duration, @p_budgetBreakdown, @p_rewards)";
                     using (MySqlCommand command = new MySqlCommand(sqlString, connection))
                     {
                         // Add parameters, providing DBNull.Value for null/empty fields that can be null in DB
