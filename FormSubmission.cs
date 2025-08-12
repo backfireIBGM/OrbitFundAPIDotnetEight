@@ -105,11 +105,8 @@ namespace OrbitFundAPIDotnetEight.Controllers
                     await connection.OpenAsync(); // Open the connection
 
                     // --- Prepare and execute the primary data insertion ---
-                    // !!! IMPORTANT !!!
-                    // Your stored procedure 'AddMissionData' MUST be able to accept ALL these parameters.
-                    // It must also be designed to handle NULL or default values (like 0 for numbers, or empty strings)
-
-                    using (MySqlCommand command = new MySqlCommand("CALL AddFormSubmission(@pTitle, @pDescription, @pGoals, @pType, @pLaunchDate, @pTeamInfo, @pFundingGoal, @pDuration, @pBudgetBreakdown, @pRewards)", connection))                   // for fields that might not be provided by the client.
+                    // !!! IMPORTANT: The stored procedure name MUST be "AddFormSubmission" now !!!
+                    using (MySqlCommand command = new MySqlCommand("CALL AddFormSubmission(@pTitle, @pDescription, @pGoals, @pType, @pLaunchDate, @pTeamInfo, @pFundingGoal, @pDuration, @pBudgetBreakdown, @pRewards)", connection))
                     {
                         // Add parameters, providing DBNull.Value for null/empty fields that can be null in DB
                         command.Parameters.AddWithValue("@pTitle", title ?? (object)DBNull.Value);
@@ -229,7 +226,8 @@ namespace OrbitFundAPIDotnetEight.Controllers
                     }
                 } // End of using MySqlConnection
 
-                return Ok($"Mission '{title ?? "N/A"}' core data submitted successfully! File upload issues may have occurred, check logs.");
+                // The return message now reflects that files might not be saved due to your choice
+                return Ok($"Mission '{title ?? "N/A"}' core data submitted successfully! Note: File uploads were processed, but paths are not stored in the database.");
             }
             catch (MySqlException ex)
             {
