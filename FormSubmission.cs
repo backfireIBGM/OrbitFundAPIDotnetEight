@@ -105,12 +105,12 @@ namespace OrbitFundAPIDotnetEight.Controllers
                         command.Parameters.AddWithValue("@p_goals", goals);
                         command.Parameters.AddWithValue("@p_type", type);
                         // Handle nullable date: If launchDate is null, pass DBNull.Value
-                        command.Parameters.AddWithValue("@p_launchDate", launchDate.HasValue);
-                        command.Parameters.AddWithValue("@p_teamInfo", teamInfo ?? (object)DBNull.Value);
+                        command.Parameters.AddWithValue("@p_launchDate", launchDate);
+                        command.Parameters.AddWithValue("@p_teamInfo", teamInfo);
                         // Pass numbers directly; if not sent, they'll be their default (0) which your SP must handle.
                         command.Parameters.AddWithValue("@p_fundingGoal", fundingGoal);
                         command.Parameters.AddWithValue("@p_duration", duration);
-                        command.Parameters.AddWithValue("@p_budgetBreakdown", budgetBreakdown ?? (object)DBNull.Value);
+                        command.Parameters.AddWithValue("@p_budgetBreakdown", budgetBreakdown);
                         // Handle nullable rewards parameter
                         command.Parameters.AddWithValue("@p_rewards", rewards ?? (object)DBNull.Value);
 
