@@ -100,7 +100,7 @@ namespace OrbitFundAPIDotnetEight.Controllers
                     {
                         // Add parameters, providing DBNull.Value for null/empty fields that can be null in DB
                         command.Parameters.AddWithValue("@pTitle", title ?? (object)DBNull.Value);
-                        command.Parameters.AddWithValue("@pDescription", description ?? (object)DBNull.Value);
+                        command.Parameters.AddWithValue("@pDescription", description);
                         command.Parameters.AddWithValue("@pGoals", goals ?? (object)DBNull.Value);
                         command.Parameters.AddWithValue("@pType", type ?? (object)DBNull.Value);
                         // Handle nullable date: If launchDate is null, pass DBNull.Value
