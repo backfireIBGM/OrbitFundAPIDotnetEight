@@ -108,8 +108,8 @@ namespace OrbitFundAPIDotnetEight.Controllers
                     // !!! IMPORTANT !!!
                     // Your stored procedure 'AddMissionData' MUST be able to accept ALL these parameters.
                     // It must also be designed to handle NULL or default values (like 0 for numbers, or empty strings)
-                    // for fields that might not be provided by the client.
-                    using (MySqlCommand command = new MySqlCommand("CALL AddMissionData(@pTitle, @pDescription, @pGoals, @pType, @pLaunchDate, @pTeamInfo, @pFundingGoal, @pDuration, @pBudgetBreakdown, @pRewards)", connection))
+
+                    using (MySqlCommand command = new MySqlCommand("CALL AddFormSubmission(@pTitle, @pDescription, @pGoals, @pType, @pLaunchDate, @pTeamInfo, @pFundingGoal, @pDuration, @pBudgetBreakdown, @pRewards)", connection))                   // for fields that might not be provided by the client.
                     {
                         // Add parameters, providing DBNull.Value for null/empty fields that can be null in DB
                         command.Parameters.AddWithValue("@pTitle", title ?? (object)DBNull.Value);
@@ -156,7 +156,9 @@ namespace OrbitFundAPIDotnetEight.Controllers
                                     _logger.LogError(fileEx, "Failed to save image. Submitting form data without this file. Error: {Message}", fileEx.Message);
                                     fileOperationsSucceeded = false;
                                 }
-                            } else {
+                            }
+                            else
+                            {
                                 _logger.LogWarning("Encountered an empty or null-named image file. Skipping.");
                                 fileOperationsSucceeded = false;
                             }
@@ -182,7 +184,9 @@ namespace OrbitFundAPIDotnetEight.Controllers
                             _logger.LogError(fileEx, "Failed to save video. Submitting form data without this file. Error: {Message}", fileEx.Message);
                             fileOperationsSucceeded = false;
                         }
-                    } else if (video != null && (video.FileName == null || video.Length == 0)) {
+                    }
+                    else if (video != null && (video.FileName == null || video.Length == 0))
+                    {
                         _logger.LogWarning("Encountered an empty or null-named video file. Skipping.");
                         fileOperationsSucceeded = false;
                     }
@@ -210,7 +214,9 @@ namespace OrbitFundAPIDotnetEight.Controllers
                                     _logger.LogError(fileEx, "Failed to save document. Submitting form data without this file. Error: {Message}", fileEx.Message);
                                     fileOperationsSucceeded = false;
                                 }
-                            } else {
+                            }
+                            else
+                            {
                                 _logger.LogWarning("Encountered an empty or null-named document file. Skipping.");
                                 fileOperationsSucceeded = false;
                             }
