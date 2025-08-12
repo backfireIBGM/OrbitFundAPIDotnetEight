@@ -46,21 +46,34 @@ namespace OrbitFundAPIDotnetEight.Controllers
         // The 'name' attribute in the HTML form inputs will be used for model binding.
         // For files, use IFormFile. For text, you can use string or other types.
         public async Task<IActionResult> HandleMissionSubmission(
-            string? title, // Made all parameters nullable for broader testing
-            string? description,
-            string? goals,
-            string? type,
-            DateTime? launchDate,
-            string? teamInfo,
-            IFormFileCollection? images, // Nullable collection for multiple files
-            IFormFile? video,          // Nullable for optional single file
-            IFormFileCollection? documents, // Nullable collection for optional multiple files
-            decimal fundingGoal,      // Using decimal for currency
-            int duration,             // If not provided, will default to 0
-            string? budgetBreakdown,
-            string? rewards           // Nullable string for optional rewards
+            [FromForm] string? title,
+            [FromForm] string? description,
+            [FromForm] string? goals,
+            [FromForm] string? type,
+            [FromForm] DateTime? launchDate,
+            [FromForm] string? teamInfo,
+            [FromForm] List<IFormFile>? images,     // prefer List<IFormFile> over IFormFileCollection for binding
+            [FromForm] IFormFile? video,
+            [FromForm] List<IFormFile>? documents,
+            [FromForm] decimal? fundingGoal,
+            [FromForm] int? duration,
+            [FromForm] string? budgetBreakdown,
+            [FromForm] string? rewards
         )
         {
+
+            _logger.LogInformation("CT={ct}", Request.ContentType);
+
+            try
+            {
+                var form = await Request.ReadFormAsync();
+                _logger.LogInformation("Form keys: {keys}", string.Join(", ", form.Keys));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "ReadFormAsync failed");
+            }
+            
             _logger.LogInformation("--- Incoming Submission Data ---");
             _logger.LogInformation($"Title: {title ?? "NULL"}");
             _logger.LogInformation($"Description: {description ?? "NULL"}");
@@ -96,7 +109,7 @@ namespace OrbitFundAPIDotnetEight.Controllers
 
                     // --- Prepare and execute the primary data insertion ---
                     // !!! IMPORTANT: The stored procedure name MUST be "AddFormSubmission" now !!!
-                    string sqlString = "CALL AddFormSubmission(@p_title, @p_description, @p_goals, @p_type, @p_launchDate, @p_teamInfo, @p_fundingGoal, @p_duration, @p_budgetBreakdown, @p_rewards)";
+                    string sqlString = "INSERT INTO FormSubmission(title, description, goals, type, launchDate, teamInfo, fundingGoal, duration, budgetBreakdown, rewards) VALUES (@p_title, @p_description, @p_goals, @p_type, @p_launchDate, @p_teamInfo, @p_fundingGoal, @p_duration, @p_budgetBreakdown, @p_rewards)";
                     using (MySqlCommand command = new MySqlCommand(sqlString, connection))
                     {
                         // Add parameters, providing DBNull.Value for null/empty fields that can be null in DB
@@ -116,6 +129,7 @@ namespace OrbitFundAPIDotnetEight.Controllers
 
                         await command.ExecuteNonQueryAsync(); // Execute the stored procedure
                         _logger.LogInformation($"Successfully stored core mission data (potentially empty) for: '{title ?? "N/A"}'.");
+                        Console.WriteLine("test");
                     }
 
                     // --- FILE SAVING LOGIC (with null checks and individual try-catch) ---
