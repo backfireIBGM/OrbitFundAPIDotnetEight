@@ -1,29 +1,31 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Http; // Required for IFormFile
 using MySql.Data.MySqlClient;
-using System; // For Path, Guid, FileStream, Exception
-using System.IO; // For Path, FileStream
-using System.Collections.Generic; // For List
-using System.Linq; // For LINQ methods like Any()
-using System.Threading.Tasks; // For Task
+using System;
+using System.IO;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration; // Make sure this is explicitly included
+using Microsoft.AspNetCore.Authorization; // Add this if you intend to use [Authorize]
 
 namespace OrbitFundAPIDotnetEight.Controllers
 {
-    [ApiController] // Indicates this is an API controller
-    [Route("api/[controller]")] // Defines the base route, e.g., /api/submission
+    [ApiController]
+    [Route("api/[controller]")] // Correctly resolves to /api/Submission
     public class SubmissionController : ControllerBase
     {
         private readonly ILogger<SubmissionController> _logger;
         private readonly IConfiguration _configuration;
-
-        // Define a directory to save uploads. Ensure this directory exists and has write permissions.
-        // In a real app, this path would likely be configured externally (e.g., appsettings.json).
-        private readonly string _uploadDirectory = Path.Combine(Directory.GetCurrentDirectory(), "uploads");
+        private readonly string _uploadDirectory; // Initialize in constructor, not at declaration
 
         public SubmissionController(ILogger<SubmissionController> logger, IConfiguration configuration)
         {
             _logger = logger;
             _configuration = configuration;
+
+            _uploadDirectory = Path.Combine(Directory.GetCurrentDirectory(), "uploads");
+
 
             // Ensure the upload directory exists on startup.
             if (!Directory.Exists(_uploadDirectory))
@@ -36,15 +38,14 @@ namespace OrbitFundAPIDotnetEight.Controllers
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Failed to create upload directory: {Directory}", _uploadDirectory);
-                    // Depending on your app's requirements, you might want to throw here
-                    // if file uploads are critical for startup. For testing, logging is fine.
+                    // In a real app, this might throw an exception on startup if critical
+                    // For now, logging might be enough for debugging.
                 }
             }
         }
 
-        [HttpPost] // This method handles HTTP POST requests to /api/submission
-        // The 'name' attribute in the HTML form inputs will be used for model binding.
-        // For files, use IFormFile. For text, you can use string or other types.
+        [HttpPost] // Handles POST requests to /api/Submission
+        [Authorize] // <--- ADD THIS IF YOU WANT TO PROTECT IT
         public async Task<IActionResult> HandleMissionSubmission(
             [FromForm] string? title,
             [FromForm] string? description,
@@ -52,18 +53,22 @@ namespace OrbitFundAPIDotnetEight.Controllers
             [FromForm] string? type,
             [FromForm] DateTime? launchDate,
             [FromForm] string? teamInfo,
-            [FromForm] List<IFormFile>? images,     // prefer List<IFormFile> over IFormFileCollection for binding
+            [FromForm] List<IFormFile>? images,
             [FromForm] IFormFile? video,
             [FromForm] List<IFormFile>? documents,
             [FromForm] decimal? fundingGoal,
             [FromForm] int? duration,
             [FromForm] string? budgetBreakdown,
             [FromForm] string? rewards
+            // Consider adding bool for termsAgree/accuracyConfirm if you need them directly in controller,
+            // otherwise they're handled client-side.
+            // [FromForm] bool? termsAgree,
+            // [FromForm] bool? accuracyConfirm
         )
         {
-
+            // REMOVE THIS BLOCK - It interferes with [FromForm] binding
+            /*
             _logger.LogInformation("CT={ct}", Request.ContentType);
-
             try
             {
                 var form = await Request.ReadFormAsync();
@@ -73,78 +78,85 @@ namespace OrbitFundAPIDotnetEight.Controllers
             {
                 _logger.LogWarning(ex, "ReadFormAsync failed");
             }
-            
+            */
+
+            // --- Model Validation (Automatically handled by [ApiController] but good to explicitly check/return) ---
+            if (!ModelState.IsValid)
+            {
+                _logger.LogWarning("Mission submission model validation failed.");
+                return BadRequest(ModelState); // This returns a ProblemDetails object with validation errors.
+            }
+
             _logger.LogInformation("--- Incoming Submission Data ---");
             _logger.LogInformation($"Title: {title ?? "NULL"}");
             _logger.LogInformation($"Description: {description ?? "NULL"}");
             _logger.LogInformation($"Goals: {goals ?? "NULL"}");
             _logger.LogInformation($"Type: {type ?? "NULL"}");
-            _logger.LogInformation($"Launch Date: {launchDate?.ToString() ?? "NULL"}"); // Use ?. and ToString() for DateTime
+            _logger.LogInformation($"Launch Date: {launchDate?.ToString() ?? "NULL"}");
             _logger.LogInformation($"Team Info: {teamInfo ?? "NULL"}");
-            _logger.LogInformation($"Funding Goal: {fundingGoal}"); // numbers won't be null but 0 if not provided
-            _logger.LogInformation($"Duration: {duration}");       // numbers won't be null but 0 if not provided
+            _logger.LogInformation($"Funding Goal: {fundingGoal?.ToString() ?? "NULL"}"); // Use ?.ToString() for nullable numbers
+            _logger.LogInformation($"Duration: {duration?.ToString() ?? "NULL"}");       // Use ?.ToString() for nullable numbers
             _logger.LogInformation($"Budget Breakdown: {budgetBreakdown ?? "NULL"}");
             _logger.LogInformation($"Rewards: {rewards ?? "NULL"}");
             _logger.LogInformation($"Image Count: {(images != null ? images.Count : 0)}");
             _logger.LogInformation($"Video Present: {(video != null ? "Yes" : "No")}");
             _logger.LogInformation($"Document Count: {(documents != null ? documents.Count : 0)}");
             _logger.LogInformation("--- End Incoming Submission Data ---");
-            string? connectionString = _configuration.GetConnectionString("connectionString");
+
+            // Fix the connection string name here as discussed previously
+            string? connectionString = _configuration.GetConnectionString("DefaultConnection"); // <-- CHANGED THIS!
             if (string.IsNullOrEmpty(connectionString))
             {
-                _logger.LogError("MySQL Connection string 'connectionString' is not set.");
+                _logger.LogError("MySQL Connection string 'DefaultConnection' is not set.");
                 return StatusCode(500, "Server configuration error: Database connection string is missing.");
             }
 
             List<string> savedImagePaths = new List<string>();
             string? savedVideoPath = null;
             List<string> savedDocPaths = new List<string>();
-            bool fileOperationsSucceeded = true; // Flag to track if all file save operations completed without error.
+            bool fileOperationsSucceeded = true;
 
             try
             {
                 using (MySqlConnection connection = new MySqlConnection(connectionString))
                 {
-                    await connection.OpenAsync(); // Open the connection
+                    await connection.OpenAsync();
 
-                    // --- Prepare and execute the primary data insertion ---
-                    // !!! IMPORTANT: The stored procedure name MUST be "AddFormSubmission" now !!!
                     string sqlString = "INSERT INTO FormSubmissions(title, description, goals, type, launchDate, teamInfo, fundingGoal, duration, budgetBreakdown, rewards) VALUES (@p_title, @p_description, @p_goals, @p_type, @p_launchDate, @p_teamInfo, @p_fundingGoal, @p_duration, @p_budgetBreakdown, @p_rewards)";
                     using (MySqlCommand command = new MySqlCommand(sqlString, connection))
                     {
-                        // Add parameters, providing DBNull.Value for null/empty fields that can be null in DB
-                        command.Parameters.AddWithValue("@p_title", title);
-                        command.Parameters.AddWithValue("@p_description", description);
-                        command.Parameters.AddWithValue("@p_goals", goals);
-                        command.Parameters.AddWithValue("@p_type", type);
-                        // Handle nullable date: If launchDate is null, pass DBNull.Value
-                        command.Parameters.AddWithValue("@p_launchDate", launchDate);
-                        command.Parameters.AddWithValue("@p_teamInfo", teamInfo);
-                        // Pass numbers directly; if not sent, they'll be their default (0) which your SP must handle.
-                        command.Parameters.AddWithValue("@p_fundingGoal", fundingGoal);
-                        command.Parameters.AddWithValue("@p_duration", duration);
-                        command.Parameters.AddWithValue("@p_budgetBreakdown", budgetBreakdown);
-                        // Handle nullable rewards parameter
-                        command.Parameters.AddWithValue("@p_rewards", rewards ?? (object)DBNull.Value);
+                        // Ensure parameters are handled correctly for potential nulls
+                        command.Parameters.AddWithValue("@p_title", (object)title ?? DBNull.Value);
+                        command.Parameters.AddWithValue("@p_description", (object)description ?? DBNull.Value);
+                        command.Parameters.AddWithValue("@p_goals", (object)goals ?? DBNull.Value);
+                        command.Parameters.AddWithValue("@p_type", (object)type ?? DBNull.Value);
+                        command.Parameters.AddWithValue("@p_launchDate", (object)launchDate ?? DBNull.Value);
+                        command.Parameters.AddWithValue("@p_teamInfo", (object)teamInfo ?? DBNull.Value);
+                        command.Parameters.AddWithValue("@p_fundingGoal", (object)fundingGoal ?? DBNull.Value); // Nullable decimal/int should map correctly
+                        command.Parameters.AddWithValue("@p_duration", (object)duration ?? DBNull.Value);
+                        command.Parameters.AddWithValue("@p_budgetBreakdown", (object)budgetBreakdown ?? DBNull.Value);
+                        command.Parameters.AddWithValue("@p_rewards", (object)rewards ?? DBNull.Value);
 
-                        await command.ExecuteNonQueryAsync(); // Execute the stored procedure
-                        _logger.LogInformation($"Successfully stored core mission data (potentially empty) for: '{title ?? "N/A"}'.");
-                        Console.WriteLine("test");
+
+                        await command.ExecuteNonQueryAsync();
+                        _logger.LogInformation($"Successfully stored core mission data for: '{title ?? "N/A"}'.");
                     }
 
-                    // --- FILE SAVING LOGIC (with null checks and individual try-catch) ---
-                    // (Keep the same file saving logic as before, with the CS8602 fixes)
+                    // --- FILE SAVING LOGIC (consider moving this to a service or making more robust) ---
+                    // This local file saving WILL NOT persist on Azure App Service restarts.
+                    // For persistent storage, use Azure Blob Storage.
 
                     // Save Mission Images
                     if (images != null && images.Any())
                     {
                         foreach (var imageFile in images)
                         {
-                            if (imageFile != null && imageFile.Length > 0 && imageFile.FileName != null)
+                            if (imageFile != null && imageFile.Length > 0) // No need for FileName != null, it's typically set by browser.
                             {
                                 try
                                 {
-                                    string fileName = Guid.NewGuid().ToString() + Path.GetExtension(imageFile.FileName);
+                                    // Ensure Path.GetExtension doesn't throw if FileName is empty/malformed
+                                    string fileName = Guid.NewGuid().ToString() + Path.GetExtension(imageFile.FileName ?? ".tmp");
                                     string filePath = Path.Combine(_uploadDirectory, fileName);
                                     using (var stream = new FileStream(filePath, FileMode.Create))
                                     {
@@ -155,24 +167,24 @@ namespace OrbitFundAPIDotnetEight.Controllers
                                 }
                                 catch (Exception fileEx)
                                 {
-                                    _logger.LogError(fileEx, "Failed to save image. Submitting form data without this file. Error: {Message}", fileEx.Message);
+                                    _logger.LogError(fileEx, "Failed to save image. Error: {Message}", fileEx.Message);
                                     fileOperationsSucceeded = false;
                                 }
                             }
                             else
                             {
-                                _logger.LogWarning("Encountered an empty or null-named image file. Skipping.");
+                                _logger.LogWarning("Encountered an empty or null image file. Skipping.");
                                 fileOperationsSucceeded = false;
                             }
                         }
                     }
 
                     // Save Mission Video
-                    if (video != null && video.Length > 0 && video.FileName != null)
+                    if (video != null && video.Length > 0)
                     {
                         try
                         {
-                            string fileName = Guid.NewGuid().ToString() + Path.GetExtension(video.FileName);
+                            string fileName = Guid.NewGuid().ToString() + Path.GetExtension(video.FileName ?? ".tmp");
                             string filePath = Path.Combine(_uploadDirectory, fileName);
                             using (var stream = new FileStream(filePath, FileMode.Create))
                             {
@@ -183,14 +195,9 @@ namespace OrbitFundAPIDotnetEight.Controllers
                         }
                         catch (Exception fileEx)
                         {
-                            _logger.LogError(fileEx, "Failed to save video. Submitting form data without this file. Error: {Message}", fileEx.Message);
+                            _logger.LogError(fileEx, "Failed to save video. Error: {Message}", fileEx.Message);
                             fileOperationsSucceeded = false;
                         }
-                    }
-                    else if (video != null && (video.FileName == null || video.Length == 0))
-                    {
-                        _logger.LogWarning("Encountered an empty or null-named video file. Skipping.");
-                        fileOperationsSucceeded = false;
                     }
 
                     // Save Technical Documents
@@ -198,11 +205,11 @@ namespace OrbitFundAPIDotnetEight.Controllers
                     {
                         foreach (var docFile in documents)
                         {
-                            if (docFile != null && docFile.Length > 0 && docFile.FileName != null)
+                            if (docFile != null && docFile.Length > 0)
                             {
                                 try
                                 {
-                                    string fileName = Guid.NewGuid().ToString() + Path.GetExtension(docFile.FileName);
+                                    string fileName = Guid.NewGuid().ToString() + Path.GetExtension(docFile.FileName ?? ".tmp");
                                     string filePath = Path.Combine(_uploadDirectory, fileName);
                                     using (var stream = new FileStream(filePath, FileMode.Create))
                                     {
@@ -213,13 +220,13 @@ namespace OrbitFundAPIDotnetEight.Controllers
                                 }
                                 catch (Exception fileEx)
                                 {
-                                    _logger.LogError(fileEx, "Failed to save document. Submitting form data without this file. Error: {Message}", fileEx.Message);
+                                    _logger.LogError(fileEx, "Failed to save document. Error: {Message}", fileEx.Message);
                                     fileOperationsSucceeded = false;
                                 }
                             }
                             else
                             {
-                                _logger.LogWarning("Encountered an empty or null-named document file. Skipping.");
+                                _logger.LogWarning("Encountered an empty or null document file. Skipping.");
                                 fileOperationsSucceeded = false;
                             }
                         }
@@ -227,12 +234,11 @@ namespace OrbitFundAPIDotnetEight.Controllers
 
                     if (!fileOperationsSucceeded)
                     {
-                        _logger.LogWarning($"Some files were not saved successfully, but core mission data for '{title ?? "N/A"}' was saved.");
+                        _logger.LogWarning($"Some files were not saved successfully for mission '{title ?? "N/A"}'.");
                     }
                 } // End of using MySqlConnection
 
-                // The return message now reflects that files might not be saved due to your choice
-                return Ok($"Mission '{title ?? "N/A"}' core data submitted successfully! Note: File uploads were processed, but paths are not stored in the database.");
+                return Ok(new { Message = $"Mission '{title ?? "N/A"}' submitted successfully!", FilesSaved = fileOperationsSucceeded, ImagePaths = savedImagePaths, VideoPath = savedVideoPath, DocumentPaths = savedDocPaths });
             }
             catch (MySqlException ex)
             {
