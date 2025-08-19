@@ -1,7 +1,12 @@
-// using Microsoft.AspNetCore.Builder;
-// using Microsoft.Extensions.DependencyInjection;
-// using Microsoft.Extensions.Hosting;
-// using Microsoft.Extensions.Configuration; // Required for IConfiguration
+using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Configuration; // Required for IConfiguration
+using MySql.Data.MySqlClient; // For MySqlConnection
+using System.Data; // For IDbConnection
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -16,9 +21,39 @@ builder.Services.AddEndpointsApiExplorer();
 // Add logging services. Still crucial for diagnostics.
 builder.Services.AddLogging();
 
-// CORS Configuration - keep if your frontend is on a different origin.
-// Remove this entire section if your frontend and backend are served from the same origin,
-// or if you don't have a frontend making cross-origin requests.
+// Add MySQL Database Connection
+builder.Services.AddTransient<IDbConnection>(sp =>
+{
+    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+    return new MySqlConnection(connectionString);
+});
+
+// Configure JWT Authentication
+builder.Services
+    .AddAuthentication(options =>
+    {
+        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    })
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = builder.Configuration["JwtSettings:Issuer"],
+            ValidAudience = builder.Configuration["JwtSettings:Audience"],
+            IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(
+                    builder.Configuration["JwtSettings:Key"]
+                        ?? throw new InvalidOperationException("JWT Key not configured!")
+                )
+            )
+        };
+    });
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy(
@@ -28,7 +63,9 @@ builder.Services.AddCors(options =>
             policyBuilder
                 .WithOrigins(
                     "http://127.0.0.1:5501",
-                    "http://localhost:5501"
+                    "http://localhost:5501",
+                    "http://127.0.0.1:5500",
+                    "https://realorbitfundapp-aeh3hnbcf8dzf4dh.westus-01.azurewebsites.net"
                 )
                 .AllowAnyMethod()
                 .AllowAnyHeader()
@@ -57,8 +94,9 @@ app.UseCors("AllowLocalDev");
 // Enable routing.
 app.UseRouting();
 
-// No explicit UseAuthorization() if you're not implementing auth.
-// app.UseAuthorization(); // Uncomment and configure if you need authorization.
+// Add Authentication and Authorization middleware
+app.UseAuthentication(); // Must be before UseAuthorization
+app.UseAuthorization();
 
 // Maps controller actions.
 app.MapControllers();
