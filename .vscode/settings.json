@@ -5,6 +5,8 @@
     "debug.internalConsoleOptions": "neverOpen",
     "azureFunctions.preDeployTask": "publish (functions)",
     "cSpell.words": [
+        "idrive",
+        "IFORMFILE",
         "Swashbuckle"
     ]
 }

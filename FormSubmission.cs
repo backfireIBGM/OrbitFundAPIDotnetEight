@@ -1,50 +1,49 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Http; // Required for IFormFile
+using Microsoft.AspNetCore.Http;
 using MySql.Data.MySqlClient;
-using System; // For Path, Guid, FileStream, Exception
-using System.IO; // For Path, FileStream
-using System.Collections.Generic; // For List
-using System.Linq; // For LINQ methods like Any()
-using System.Threading.Tasks; // For Task
+using System;
+using System.IO;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+
+// Add AWS S3 related namespaces
+using Amazon.S3;
+using Amazon.S3.Model;
+using Amazon.Runtime; // For BasicAWSCredentials
 
 namespace OrbitFundAPIDotnetEight.Controllers
 {
-    [ApiController] // Indicates this is an API controller
-    [Route("api/[controller]")] // Defines the base route, e.g., /api/submission
+    [ApiController]
+    [Route("api/[controller]")]
     public class SubmissionController : ControllerBase
     {
         private readonly ILogger<SubmissionController> _logger;
         private readonly IConfiguration _configuration;
 
-        // Define a directory to save uploads. Ensure this directory exists and has write permissions.
-        // In a real app, this path would likely be configured externally (e.g., appsettings.json).
-        private readonly string _uploadDirectory = Path.Combine(Directory.GetCurrentDirectory(), "uploads");
+        // Configuration for IDrive S3-Compatible Storage
+        private readonly string _idriveAccessKey;
+        private readonly string _idriveSecretKey;
+        private readonly string _idriveServiceUrl; // The endpoint provided by IDrive
+        private readonly string _idriveBucketName;
 
         public SubmissionController(ILogger<SubmissionController> logger, IConfiguration configuration)
         {
             _logger = logger;
             _configuration = configuration;
 
-            // Ensure the upload directory exists on startup.
-            if (!Directory.Exists(_uploadDirectory))
-            {
-                try
-                {
-                    Directory.CreateDirectory(_uploadDirectory);
-                    _logger.LogInformation($"Created upload directory: {_uploadDirectory}");
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to create upload directory: {Directory}", _uploadDirectory);
-                    // Depending on your app's requirements, you might want to throw here
-                    // if file uploads are critical for startup. For testing, logging is fine.
-                }
-            }
+            // Retrieve IDrive S3 credentials from appsettings.json
+            _idriveAccessKey = _configuration["IDriveS3:AccessKey"]
+                               ?? throw new InvalidOperationException("IDriveS3:AccessKey not configured.");
+            _idriveSecretKey = _configuration["IDriveS3:SecretKey"]
+                               ?? throw new InvalidOperationException("IDriveS3:SecretKey not configured.");
+            _idriveServiceUrl = _configuration["IDriveS3:ServiceUrl"]
+                                ?? throw new InvalidOperationException("IDriveS3:ServiceUrl not configured.");
+            _idriveBucketName = _configuration["IDriveS3:BucketName"]
+                                ?? throw new InvalidOperationException("IDriveS3:BucketName not configured.");
         }
 
-        [HttpPost] // This method handles HTTP POST requests to /api/submission
-        // The 'name' attribute in the HTML form inputs will be used for model binding.
-        // For files, use IFormFile. For text, you can use string or other types.
+        [HttpPost]
         public async Task<IActionResult> HandleMissionSubmission(
             [FromForm] string? title,
             [FromForm] string? description,
@@ -52,8 +51,8 @@ namespace OrbitFundAPIDotnetEight.Controllers
             [FromForm] string? type,
             [FromForm] DateTime? launchDate,
             [FromForm] string? teamInfo,
-            [FromForm] List<IFormFile>? images,     // prefer List<IFormFile> over IFormFileCollection for binding
-            [FromForm] IFormFile? video,
+            [FromForm] List<IFormFile>? images,
+            [FromForm] List<IFormFile>? video,     // <--- THIS IS THE FIX: video is now a List<IFormFile>
             [FromForm] List<IFormFile>? documents,
             [FromForm] decimal? fundingGoal,
             [FromForm] int? duration,
@@ -61,7 +60,6 @@ namespace OrbitFundAPIDotnetEight.Controllers
             [FromForm] string? rewards
         )
         {
-
             _logger.LogInformation("CT={ct}", Request.ContentType);
 
             try
@@ -73,22 +71,23 @@ namespace OrbitFundAPIDotnetEight.Controllers
             {
                 _logger.LogWarning(ex, "ReadFormAsync failed");
             }
-            
+
             _logger.LogInformation("--- Incoming Submission Data ---");
             _logger.LogInformation($"Title: {title ?? "NULL"}");
             _logger.LogInformation($"Description: {description ?? "NULL"}");
             _logger.LogInformation($"Goals: {goals ?? "NULL"}");
             _logger.LogInformation($"Type: {type ?? "NULL"}");
-            _logger.LogInformation($"Launch Date: {launchDate?.ToString() ?? "NULL"}"); // Use ?. and ToString() for DateTime
+            _logger.LogInformation($"Launch Date: {launchDate?.ToString() ?? "NULL"}");
             _logger.LogInformation($"Team Info: {teamInfo ?? "NULL"}");
-            _logger.LogInformation($"Funding Goal: {fundingGoal}"); // numbers won't be null but 0 if not provided
-            _logger.LogInformation($"Duration: {duration}");       // numbers won't be null but 0 if not provided
+            _logger.LogInformation($"Funding Goal: {fundingGoal}");
+            _logger.LogInformation($"Duration: {duration}");
             _logger.LogInformation($"Budget Breakdown: {budgetBreakdown ?? "NULL"}");
             _logger.LogInformation($"Rewards: {rewards ?? "NULL"}");
             _logger.LogInformation($"Image Count: {(images != null ? images.Count : 0)}");
-            _logger.LogInformation($"Video Present: {(video != null ? "Yes" : "No")}");
+            _logger.LogInformation($"Video Count: {(video != null ? video.Count : 0)}"); // <--- Log Count for List
             _logger.LogInformation($"Document Count: {(documents != null ? documents.Count : 0)}");
             _logger.LogInformation("--- End Incoming Submission Data ---");
+
             string? connectionString = _configuration.GetConnectionString("connectionString");
             if (string.IsNullOrEmpty(connectionString))
             {
@@ -96,154 +95,166 @@ namespace OrbitFundAPIDotnetEight.Controllers
                 return StatusCode(500, "Server configuration error: Database connection string is missing.");
             }
 
-            List<string> savedImagePaths = new List<string>();
-            string? savedVideoPath = null;
-            List<string> savedDocPaths = new List<string>();
-            bool fileOperationsSucceeded = true; // Flag to track if all file save operations completed without error.
+            List<string> savedImageUrls = new List<string>();
+            List<string> savedVideoUrls = new List<string>(); // <--- Now a List<string> for multiple video URLs
+            List<string> savedDocUrls = new List<string>();
+            bool fileOperationsSucceeded = true;
 
-            try
+            // Configure the S3 client for IDrive
+            var s3Config = new AmazonS3Config
             {
-                using (MySqlConnection connection = new MySqlConnection(connectionString))
+                ServiceURL = _idriveServiceUrl,
+                ForcePathStyle = true, // Often required for S3-compatible services
+            };
+
+            // Use BasicAWSCredentials with your IDrive keys
+            var credentials = new BasicAWSCredentials(_idriveAccessKey, _idriveSecretKey);
+
+            using (var s3Client = new AmazonS3Client(credentials, s3Config))
+            {
+                try
                 {
-                    await connection.OpenAsync(); // Open the connection
-
-                    // --- Prepare and execute the primary data insertion ---
-                    // !!! IMPORTANT: The stored procedure name MUST be "AddFormSubmission" now !!!
-                    string sqlString = "INSERT INTO FormSubmissions(title, description, goals, type, launchDate, teamInfo, fundingGoal, duration, budgetBreakdown, rewards) VALUES (@p_title, @p_description, @p_goals, @p_type, @p_launchDate, @p_teamInfo, @p_fundingGoal, @p_duration, @p_budgetBreakdown, @p_rewards)";
-                    using (MySqlCommand command = new MySqlCommand(sqlString, connection))
+                    // Function to upload a single file to S3-compatible storage
+                    async Task<string?> UploadFileToS3(IFormFile file, string folder)
                     {
-                        // Add parameters, providing DBNull.Value for null/empty fields that can be null in DB
-                        command.Parameters.AddWithValue("@p_title", title);
-                        command.Parameters.AddWithValue("@p_description", description);
-                        command.Parameters.AddWithValue("@p_goals", goals);
-                        command.Parameters.AddWithValue("@p_type", type);
-                        // Handle nullable date: If launchDate is null, pass DBNull.Value
-                        command.Parameters.AddWithValue("@p_launchDate", launchDate);
-                        command.Parameters.AddWithValue("@p_teamInfo", teamInfo);
-                        // Pass numbers directly; if not sent, they'll be their default (0) which your SP must handle.
-                        command.Parameters.AddWithValue("@p_fundingGoal", fundingGoal);
-                        command.Parameters.AddWithValue("@p_duration", duration);
-                        command.Parameters.AddWithValue("@p_budgetBreakdown", budgetBreakdown);
-                        // Handle nullable rewards parameter
-                        command.Parameters.AddWithValue("@p_rewards", rewards ?? (object)DBNull.Value);
+                        if (file == null || file.Length == 0 || string.IsNullOrEmpty(file.FileName))
+                        {
+                            _logger.LogWarning($"Skipping empty or null-named file in folder: {folder}");
+                            return null;
+                        }
 
-                        await command.ExecuteNonQueryAsync(); // Execute the stored procedure
-                        _logger.LogInformation($"Successfully stored core mission data (potentially empty) for: '{title ?? "N/A"}'.");
-                        Console.WriteLine("test");
+                        // Use Guid for unique file name, preserve original extension
+                        string fileName = $"{folder}/{Guid.NewGuid()}{Path.GetExtension(file.FileName)}";
+
+                        try
+                        {
+                            var putRequest = new PutObjectRequest
+                            {
+                                BucketName = _idriveBucketName,
+                                Key = fileName, // This is the path/name of the file in your bucket
+                                InputStream = file.OpenReadStream(),
+                                ContentType = file.ContentType
+                            };
+
+                            putRequest.CannedACL = S3CannedACL.PublicRead; // Set public read access
+
+                            await s3Client.PutObjectAsync(putRequest);
+
+                            string fileUrl = $"{_idriveServiceUrl}/{_idriveBucketName}/{fileName}";
+                            _logger.LogInformation($"Successfully uploaded {file.FileName} to IDrive S3: {fileUrl}");
+                            return fileUrl;
+                        }
+                        catch (Exception s3Ex)
+                        {
+                            _logger.LogError(s3Ex, "Failed to upload file '{FileName}' to IDrive S3. Error: {Message}", file.FileName, s3Ex.Message);
+                            fileOperationsSucceeded = false;
+                            return null;
+                        }
                     }
 
-                    // --- FILE SAVING LOGIC (with null checks and individual try-catch) ---
-                    // (Keep the same file saving logic as before, with the CS8602 fixes)
-
-                    // Save Mission Images
+                    // Upload Mission Images
                     if (images != null && images.Any())
                     {
                         foreach (var imageFile in images)
                         {
-                            if (imageFile != null && imageFile.Length > 0 && imageFile.FileName != null)
+                            string? url = await UploadFileToS3(imageFile, "images");
+                            if (url != null)
                             {
-                                try
-                                {
-                                    string fileName = Guid.NewGuid().ToString() + Path.GetExtension(imageFile.FileName);
-                                    string filePath = Path.Combine(_uploadDirectory, fileName);
-                                    using (var stream = new FileStream(filePath, FileMode.Create))
-                                    {
-                                        await imageFile.CopyToAsync(stream);
-                                    }
-                                    savedImagePaths.Add(filePath);
-                                    _logger.LogInformation($"Successfully saved image: {filePath}");
-                                }
-                                catch (Exception fileEx)
-                                {
-                                    _logger.LogError(fileEx, "Failed to save image. Submitting form data without this file. Error: {Message}", fileEx.Message);
-                                    fileOperationsSucceeded = false;
-                                }
-                            }
-                            else
-                            {
-                                _logger.LogWarning("Encountered an empty or null-named image file. Skipping.");
-                                fileOperationsSucceeded = false;
+                                savedImageUrls.Add(url);
                             }
                         }
                     }
 
-                    // Save Mission Video
-                    if (video != null && video.Length > 0 && video.FileName != null)
+                    // Upload Mission Videos <--- FIXED LOGIC FOR LIST<IFORMFILE>
+                    if (video != null && video.Any())
                     {
-                        try
+                        foreach (var videoFile in video) // Iterate through each video file in the list
                         {
-                            string fileName = Guid.NewGuid().ToString() + Path.GetExtension(video.FileName);
-                            string filePath = Path.Combine(_uploadDirectory, fileName);
-                            using (var stream = new FileStream(filePath, FileMode.Create))
+                            string? url = await UploadFileToS3(videoFile, "videos");
+                            if (url != null)
                             {
-                                await video.CopyToAsync(stream);
+                                savedVideoUrls.Add(url);
                             }
-                            savedVideoPath = filePath;
-                            _logger.LogInformation($"Successfully saved video: {filePath}");
-                        }
-                        catch (Exception fileEx)
-                        {
-                            _logger.LogError(fileEx, "Failed to save video. Submitting form data without this file. Error: {Message}", fileEx.Message);
-                            fileOperationsSucceeded = false;
                         }
                     }
-                    else if (video != null && (video.FileName == null || video.Length == 0))
+                    else
                     {
-                        _logger.LogWarning("Encountered an empty or null-named video file. Skipping.");
-                        fileOperationsSucceeded = false;
+                        _logger.LogInformation("No video files were provided.");
                     }
 
-                    // Save Technical Documents
+                    // Upload Technical Documents
                     if (documents != null && documents.Any())
                     {
                         foreach (var docFile in documents)
                         {
-                            if (docFile != null && docFile.Length > 0 && docFile.FileName != null)
+                            string? url = await UploadFileToS3(docFile, "documents");
+                            if (url != null)
                             {
-                                try
-                                {
-                                    string fileName = Guid.NewGuid().ToString() + Path.GetExtension(docFile.FileName);
-                                    string filePath = Path.Combine(_uploadDirectory, fileName);
-                                    using (var stream = new FileStream(filePath, FileMode.Create))
-                                    {
-                                        await docFile.CopyToAsync(stream);
-                                    }
-                                    savedDocPaths.Add(filePath);
-                                    _logger.LogInformation($"Successfully saved document: {filePath}");
-                                }
-                                catch (Exception fileEx)
-                                {
-                                    _logger.LogError(fileEx, "Failed to save document. Submitting form data without this file. Error: {Message}", fileEx.Message);
-                                    fileOperationsSucceeded = false;
-                                }
-                            }
-                            else
-                            {
-                                _logger.LogWarning("Encountered an empty or null-named document file. Skipping.");
-                                fileOperationsSucceeded = false;
+                                savedDocUrls.Add(url);
                             }
                         }
                     }
 
-                    if (!fileOperationsSucceeded)
-                    {
-                        _logger.LogWarning($"Some files were not saved successfully, but core mission data for '{title ?? "N/A"}' was saved.");
-                    }
-                } // End of using MySqlConnection
+                    // Convert lists of URLs to a single string for storage
+                    string? imageUrlsString = savedImageUrls.Any() ? string.Join(",", savedImageUrls) : null;
+                    string? videoUrlsString = savedVideoUrls.Any() ? string.Join(",", savedVideoUrls) : null;
+                    string? docUrlsString = savedDocUrls.Any() ? string.Join(",", savedDocUrls) : null;
 
-                // The return message now reflects that files might not be saved due to your choice
-                return Ok($"Mission '{title ?? "N/A"}' core data submitted successfully! Note: File uploads were processed, but paths are not stored in the database.");
+
+                    using (MySqlConnection connection = new MySqlConnection(connectionString))
+                    {
+                        await connection.OpenAsync();
+
+                        string sqlString = @"
+                            INSERT INTO FormSubmissions(
+                                title, description, goals, type, launchDate, teamInfo, fundingGoal, duration,
+                                budgetBreakdown, rewards, image_urls, video_urls, document_urls -- <--- DB column name changed for consistency
+                            ) VALUES (
+                                @p_title, @p_description, @p_goals, @p_type, @p_launchDate, @p_teamInfo,
+                                @p_fundingGoal, @p_duration, @p_budgetBreakdown, @p_rewards,
+                                @p_imageUrls, @p_videoUrls, @p_documentUrls -- <--- Parameter for video URLs list
+                            )";
+
+                        using (MySqlCommand command = new MySqlCommand(sqlString, connection))
+                        {
+                            command.Parameters.AddWithValue("@p_title", title ?? (object)DBNull.Value);
+                            command.Parameters.AddWithValue("@p_description", description ?? (object)DBNull.Value);
+                            command.Parameters.AddWithValue("@p_goals", goals ?? (object)DBNull.Value);
+                            command.Parameters.AddWithValue("@p_type", type ?? (object)DBNull.Value);
+                            command.Parameters.AddWithValue("@p_launchDate", launchDate ?? (object)DBNull.Value);
+                            command.Parameters.AddWithValue("@p_teamInfo", teamInfo ?? (object)DBNull.Value);
+                            command.Parameters.AddWithValue("@p_fundingGoal", fundingGoal ?? (object)DBNull.Value);
+                            command.Parameters.AddWithValue("@p_duration", duration ?? (object)DBNull.Value);
+                            command.Parameters.AddWithValue("@p_budgetBreakdown", budgetBreakdown ?? (object)DBNull.Value);
+                            command.Parameters.AddWithValue("@p_rewards", rewards ?? (object)DBNull.Value);
+
+                            command.Parameters.AddWithValue("@p_imageUrls", imageUrlsString);
+                            command.Parameters.AddWithValue("@p_videoUrls", videoUrlsString); // <--- Correct parameter for multiple video URLs
+                            command.Parameters.AddWithValue("@p_documentUrls", docUrlsString);
+
+                            await command.ExecuteNonQueryAsync();
+                            _logger.LogInformation($"Successfully stored core mission data and IDrive S3 URLs for: '{title ?? "N/A"}'.");
+                        }
+                    }
+                }
+                catch (MySqlException ex)
+                {
+                    _logger.LogError(ex, "MySQL Error during submission: {Message}", ex.Message);
+                    return StatusCode(500, $"Database error processing your submission: {ex.Message}");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "General Error during submission processing (incl. S3 issues): {Message}", ex.Message);
+                    return StatusCode(500, $"An internal error occurred processing your submission: {ex.Message}");
+                }
             }
-            catch (MySqlException ex)
+
+            if (!fileOperationsSucceeded)
             {
-                _logger.LogError(ex, "MySQL Error during submission: {Message}", ex.Message);
-                return StatusCode(500, $"Database error processing your submission: {ex.Message}");
+                return Ok($"Mission '{title ?? "N/A"}' data submitted successfully! WARNING: Some files were not uploaded to IDrive S3 due to errors.");
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "General Error during submission processing: {Message}", ex.Message);
-                return StatusCode(500, $"An internal error occurred processing your submission: {ex.Message}");
-            }
+
+            return Ok($"Mission '{title ?? "N/A"}' and all associated files uploaded to IDrive S3 and data submitted successfully!");
         }
     }
 }
