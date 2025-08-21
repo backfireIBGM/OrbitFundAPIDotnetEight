@@ -24,7 +24,7 @@ builder.Services.AddLogging();
 // Add MySQL Database Connection
 builder.Services.AddTransient<IDbConnection>(sp =>
 {
-    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+    var connectionString = builder.Configuration.GetConnectionString("connectionString");
     return new MySqlConnection(connectionString);
 });
 
