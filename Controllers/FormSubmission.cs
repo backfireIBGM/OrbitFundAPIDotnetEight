@@ -1,16 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Http;
 using MySql.Data.MySqlClient;
-using System;
-using System.IO;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-
-// Add AWS S3 related namespaces
 using Amazon.S3;
 using Amazon.S3.Model;
-using Amazon.Runtime; // For BasicAWSCredentials
+using Amazon.Runtime;
 
 namespace OrbitFundAPIDotnetEight.Controllers
 {
@@ -22,25 +14,46 @@ namespace OrbitFundAPIDotnetEight.Controllers
         private readonly IConfiguration _configuration;
 
         // Configuration for IDrive S3-Compatible Storage
-        private readonly string _idriveAccessKey;
-        private readonly string _idriveSecretKey;
-        private readonly string _idriveServiceUrl; // The endpoint provided by IDrive
-        private readonly string _idriveBucketName;
+        private readonly string? _idriveAccessKey;
+        private readonly string? _idriveSecretKey;
+        private readonly string? _idriveServiceUrl;
+        private readonly string? _idriveBucketName;
 
         public SubmissionController(ILogger<SubmissionController> logger, IConfiguration configuration)
         {
             _logger = logger;
             _configuration = configuration;
 
+            _logger.LogInformation("Attempting to load configuration for IDrive S3.");
+
             // Retrieve IDrive S3 credentials from appsettings.json
-            _idriveAccessKey = _configuration["IDriveS3:AccessKey"]
-                               ?? throw new InvalidOperationException("IDriveS3:AccessKey not configured.");
-            _idriveSecretKey = _configuration["IDriveS3:SecretKey"]
-                               ?? throw new InvalidOperationException("IDriveS3:SecretKey not configured.");
-            _idriveServiceUrl = _configuration["IDriveS3:ServiceUrl"]
-                                ?? throw new InvalidOperationException("IDriveS3:ServiceUrl not configured.");
-            _idriveBucketName = _configuration["IDriveS3:BucketName"]
-                                ?? throw new InvalidOperationException("IDriveS3:BucketName not configured.");
+            _idriveAccessKey = _configuration["IDriveS3:AccessKey"];
+            _idriveSecretKey = _configuration["IDriveS3:SecretKey"];
+            _idriveServiceUrl = _configuration["IDriveS3:ServiceUrl"];
+            _idriveBucketName = _configuration["IDriveS3:BucketName"];
+
+            // Log null configuration keys for IDrive S3
+            if (string.IsNullOrEmpty(_idriveAccessKey))
+            {
+                _logger.LogError("IDriveS3:AccessKey is NULL or empty in configuration.");
+                throw new InvalidOperationException("IDriveS3:AccessKey not configured.");
+            }
+            if (string.IsNullOrEmpty(_idriveSecretKey))
+            {
+                _logger.LogError("IDriveS3:SecretKey is NULL or empty in configuration.");
+                throw new InvalidOperationException("IDriveS3:SecretKey not configured.");
+            }
+            if (string.IsNullOrEmpty(_idriveServiceUrl))
+            {
+                _logger.LogError("IDriveS3:ServiceUrl is NULL or empty in configuration.");
+                throw new InvalidOperationException("IDriveS3:ServiceUrl not configured.");
+            }
+            if (string.IsNullOrEmpty(_idriveBucketName))
+            {
+                _logger.LogError("IDriveS3:BucketName is NULL or empty in configuration.");
+                throw new InvalidOperationException("IDriveS3:BucketName not configured.");
+            }
+             _logger.LogInformation("IDrive S3 configuration loading complete. Check preceding errors for missing keys.");
         }
 
         [HttpPost]
@@ -52,7 +65,7 @@ namespace OrbitFundAPIDotnetEight.Controllers
             [FromForm] DateTime? launchDate,
             [FromForm] string? teamInfo,
             [FromForm] List<IFormFile>? images,
-            [FromForm] List<IFormFile>? video,     // <--- THIS IS THE FIX: video is now a List<IFormFile>
+            [FromForm] List<IFormFile>? video,
             [FromForm] List<IFormFile>? documents,
             [FromForm] decimal? fundingGoal,
             [FromForm] int? duration,
@@ -84,23 +97,35 @@ namespace OrbitFundAPIDotnetEight.Controllers
             _logger.LogInformation($"Budget Breakdown: {budgetBreakdown ?? "NULL"}");
             _logger.LogInformation($"Rewards: {rewards ?? "NULL"}");
             _logger.LogInformation($"Image Count: {(images != null ? images.Count : 0)}");
-            _logger.LogInformation($"Video Count: {(video != null ? video.Count : 0)}"); // <--- Log Count for List
+            _logger.LogInformation($"Video Count: {(video != null ? video.Count : 0)}");
             _logger.LogInformation($"Document Count: {(documents != null ? documents.Count : 0)}");
             _logger.LogInformation("--- End Incoming Submission Data ---");
 
             string? connectionString = _configuration.GetConnectionString("connectionString");
             if (string.IsNullOrEmpty(connectionString))
             {
-                _logger.LogError("MySQL Connection string 'connectionString' is not set.");
+                _logger.LogError("MySQL Connection string 'connectionString' is not set in configuration.");
                 return StatusCode(500, "Server configuration error: Database connection string is missing.");
             }
+            else
+            {
+                _logger.LogInformation("MySQL Connection string 'connectionString' successfully loaded.");
+            }
+
 
             List<string> savedImageUrls = new List<string>();
-            List<string> savedVideoUrls = new List<string>(); // <--- Now a List<string> for multiple video URLs
+            List<string> savedVideoUrls = new List<string>();
             List<string> savedDocUrls = new List<string>();
             bool fileOperationsSucceeded = true;
 
-            // Configure the S3 client for IDrive
+            if (string.IsNullOrEmpty(_idriveAccessKey) || string.IsNullOrEmpty(_idriveSecretKey) ||
+                string.IsNullOrEmpty(_idriveServiceUrl) || string.IsNullOrEmpty(_idriveBucketName))
+            {
+                _logger.LogError("Cannot proceed with S3 operations: One or more IDrive S3 configuration keys are missing or null.");
+                return StatusCode(500, "Server configuration error: IDrive S3 storage not properly configured.");
+            }
+
+
             var s3Config = new AmazonS3Config
             {
                 ServiceURL = _idriveServiceUrl,
@@ -123,7 +148,6 @@ namespace OrbitFundAPIDotnetEight.Controllers
                             return null;
                         }
 
-                        // Use Guid for unique file name, preserve original extension
                         string fileName = $"{folder}/{Guid.NewGuid()}{Path.GetExtension(file.FileName)}";
 
                         try
@@ -131,12 +155,12 @@ namespace OrbitFundAPIDotnetEight.Controllers
                             var putRequest = new PutObjectRequest
                             {
                                 BucketName = _idriveBucketName,
-                                Key = fileName, // This is the path/name of the file in your bucket
+                                Key = fileName,
                                 InputStream = file.OpenReadStream(),
                                 ContentType = file.ContentType
                             };
 
-                            putRequest.CannedACL = S3CannedACL.PublicRead; // Set public read access
+                            putRequest.CannedACL = S3CannedACL.PublicRead;
 
                             await s3Client.PutObjectAsync(putRequest);
 
@@ -144,9 +168,15 @@ namespace OrbitFundAPIDotnetEight.Controllers
                             _logger.LogInformation($"Successfully uploaded {file.FileName} to IDrive S3: {fileUrl}");
                             return fileUrl;
                         }
+                        catch (AmazonS3Exception s3Ex)
+                        {
+                            _logger.LogError(s3Ex, "IDrive S3 Upload Failed for '{FileName}'. AWS Error Code: {ErrorCode}. Message: {Message}", file.FileName, s3Ex.ErrorCode, s3Ex.Message);
+                            fileOperationsSucceeded = false;
+                            return null;
+                        }
                         catch (Exception s3Ex)
                         {
-                            _logger.LogError(s3Ex, "Failed to upload file '{FileName}' to IDrive S3. Error: {Message}", file.FileName, s3Ex.Message);
+                            _logger.LogError(s3Ex, "General Error uploading file '{FileName}' to IDrive S3. Message: {Message}", file.FileName, s3Ex.Message);
                             fileOperationsSucceeded = false;
                             return null;
                         }
@@ -165,10 +195,10 @@ namespace OrbitFundAPIDotnetEight.Controllers
                         }
                     }
 
-                    // Upload Mission Videos <--- FIXED LOGIC FOR LIST<IFORMFILE>
+                    // Upload Mission Videos
                     if (video != null && video.Any())
                     {
-                        foreach (var videoFile in video) // Iterate through each video file in the list
+                        foreach (var videoFile in video)
                         {
                             string? url = await UploadFileToS3(videoFile, "videos");
                             if (url != null)
@@ -203,48 +233,52 @@ namespace OrbitFundAPIDotnetEight.Controllers
 
                     using (MySqlConnection connection = new MySqlConnection(connectionString))
                     {
-                        await connection.OpenAsync();
+                        try
+                        {
+                            await connection.OpenAsync();
+                            _logger.LogInformation("Successfully opened MySQL connection.");
 
-                        string sqlString = @"
+                            string sqlString = @"
                             INSERT INTO FormSubmissions(
                                 title, description, goals, type, launchDate, teamInfo, fundingGoal, duration,
-                                budgetBreakdown, rewards, image_urls, video_urls, document_urls -- <--- DB column name changed for consistency
+                                budgetBreakdown, rewards, image_urls, video_urls, document_urls
                             ) VALUES (
                                 @p_title, @p_description, @p_goals, @p_type, @p_launchDate, @p_teamInfo,
                                 @p_fundingGoal, @p_duration, @p_budgetBreakdown, @p_rewards,
-                                @p_imageUrls, @p_videoUrls, @p_documentUrls -- <--- Parameter for video URLs list
+                                @p_imageUrls, @p_videoUrls, @p_documentUrls
                             )";
 
-                        using (MySqlCommand command = new MySqlCommand(sqlString, connection))
+                            using (MySqlCommand command = new MySqlCommand(sqlString, connection))
+                            {
+                                command.Parameters.AddWithValue("@p_title", title ?? (object)DBNull.Value);
+                                command.Parameters.AddWithValue("@p_description", description ?? (object)DBNull.Value);
+                                command.Parameters.AddWithValue("@p_goals", goals ?? (object)DBNull.Value);
+                                command.Parameters.AddWithValue("@p_type", type ?? (object)DBNull.Value);
+                                command.Parameters.AddWithValue("@p_launchDate", launchDate ?? (object)DBNull.Value);
+                                command.Parameters.AddWithValue("@p_teamInfo", teamInfo ?? (object)DBNull.Value);
+                                command.Parameters.AddWithValue("@p_fundingGoal", fundingGoal ?? (object)DBNull.Value);
+                                command.Parameters.AddWithValue("@p_duration", duration ?? (object)DBNull.Value);
+                                command.Parameters.AddWithValue("@p_budgetBreakdown", budgetBreakdown ?? (object)DBNull.Value);
+                                command.Parameters.AddWithValue("@p_rewards", rewards ?? (object)DBNull.Value);
+
+                                command.Parameters.AddWithValue("@p_imageUrls", imageUrlsString);
+                                command.Parameters.AddWithValue("@p_videoUrls", videoUrlsString);
+                                command.Parameters.AddWithValue("@p_documentUrls", docUrlsString);
+
+                                await command.ExecuteNonQueryAsync();
+                                _logger.LogInformation($"Successfully stored core mission data and IDrive S3 URLs for: '{title ?? "N/A"}'.");
+                            }
+                        }
+                        catch (MySqlException ex)
                         {
-                            command.Parameters.AddWithValue("@p_title", title ?? (object)DBNull.Value);
-                            command.Parameters.AddWithValue("@p_description", description ?? (object)DBNull.Value);
-                            command.Parameters.AddWithValue("@p_goals", goals ?? (object)DBNull.Value);
-                            command.Parameters.AddWithValue("@p_type", type ?? (object)DBNull.Value);
-                            command.Parameters.AddWithValue("@p_launchDate", launchDate ?? (object)DBNull.Value);
-                            command.Parameters.AddWithValue("@p_teamInfo", teamInfo ?? (object)DBNull.Value);
-                            command.Parameters.AddWithValue("@p_fundingGoal", fundingGoal ?? (object)DBNull.Value);
-                            command.Parameters.AddWithValue("@p_duration", duration ?? (object)DBNull.Value);
-                            command.Parameters.AddWithValue("@p_budgetBreakdown", budgetBreakdown ?? (object)DBNull.Value);
-                            command.Parameters.AddWithValue("@p_rewards", rewards ?? (object)DBNull.Value);
-
-                            command.Parameters.AddWithValue("@p_imageUrls", imageUrlsString);
-                            command.Parameters.AddWithValue("@p_videoUrls", videoUrlsString); // <--- Correct parameter for multiple video URLs
-                            command.Parameters.AddWithValue("@p_documentUrls", docUrlsString);
-
-                            await command.ExecuteNonQueryAsync();
-                            _logger.LogInformation($"Successfully stored core mission data and IDrive S3 URLs for: '{title ?? "N/A"}'.");
+                            _logger.LogError(ex, "MySQL Error during submission (Connect/Insert): {Message}. Error Code: {ErrorCode}", ex.Message, ex.ErrorCode);
+                            return StatusCode(500, $"Database error processing your submission: {ex.Message}");
                         }
                     }
                 }
-                catch (MySqlException ex)
-                {
-                    _logger.LogError(ex, "MySQL Error during submission: {Message}", ex.Message);
-                    return StatusCode(500, $"Database error processing your submission: {ex.Message}");
-                }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "General Error during submission processing (incl. S3 issues): {Message}", ex.Message);
+                    _logger.LogError(ex, "General Error during submission processing (incl. S3 client creation, file upload loop): {Message}", ex.Message);
                     return StatusCode(500, $"An internal error occurred processing your submission: {ex.Message}");
                 }
             }
