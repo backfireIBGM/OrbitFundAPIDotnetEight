@@ -2,13 +2,14 @@ using Microsoft.AspNetCore.Mvc;
 using MySql.Data.MySqlClient;
 using OrbitFund.Models;
 using System.Data;
-using Dapper; // Used for easy data mapping
-using BCrypt.Net; // For password hashing
+using Dapper;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using Microsoft.Extensions.Configuration; // To access JwtSettings
+using Microsoft.Extensions.Configuration;
+using BCrypt.Net;
+using Microsoft.AspNetCore.Authorization;
 
 namespace OrbitFund.Controllers;
 
@@ -98,7 +99,6 @@ public class UsersController : ControllerBase
                 return Unauthorized("Invalid email or password.");
             }
 
-            // Generate JWT Token
             var token = GenerateJwtToken(user);
             _logger.LogInformation("User logged in: {Email}", request.Email);
 
@@ -122,31 +122,80 @@ public class UsersController : ControllerBase
             return StatusCode(500, "An unexpected error occurred. Please try again later.");
         }
     }
+    [HttpGet("verifyAdmin")]
+    [Authorize]
+    public async Task<IActionResult> VerifyAdmin()
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
-private string GenerateJwtToken(User user)
+        if (string.IsNullOrEmpty(userIdClaim))
+        {
+            _logger.LogWarning("VerifyAdmin: User ID claim not found in token for an authenticated user.");
+            return Unauthorized("User ID not found in token.");
+        }
+
+        if (!int.TryParse(userIdClaim, out int userId))
+        {
+            _logger.LogError("VerifyAdmin: Failed to parse User ID claim '{UserIdClaim}' to an integer.", userIdClaim);
+            return Unauthorized("Invalid User ID format in token.");
+        }
+
+        try
+        {
+            var sql = "SELECT AdminGrantedAt FROM Users WHERE Id = @UserId";
+            var adminGrantedAt = await _db.QueryFirstOrDefaultAsync<DateTime?>(sql, new { UserId = userId });
+
+            if (adminGrantedAt.HasValue)
+            {
+                _logger.LogInformation("VerifyAdmin: User {UserId} is an admin (AdminGrantedAt: {AdminGrantedAt}).", userId, adminGrantedAt.Value);
+                return Ok(new { IsAdmin = true, GrantedAt = adminGrantedAt.Value });
+            }
+            else
+            {
+                _logger.LogInformation("VerifyAdmin: User {UserId} is NOT an admin.", userId);
+                return Forbid("User does not have administrative privileges.");
+            }
+        }
+        catch (MySqlException ex)
+        {
+            _logger.LogError(ex, "VerifyAdmin: Database error while checking admin status for user {UserId}.", userId);
+            return StatusCode(500, "A database error occurred while verifying privileges.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "VerifyAdmin: An unexpected error occurred while checking admin status for user {UserId}.", userId);
+            return StatusCode(500, "An unexpected error occurred.");
+        }
+    }
+
+    private string GenerateJwtToken(User user)
     {
         var jwtSettings = _configuration.GetSection("JwtSettings");
-        // FIX: Ensure 'Key' is not null. Use a null-coalescing operator or throw.
         var jwtKey = jwtSettings["Key"] ?? throw new InvalidOperationException("JWT Key not configured in appsettings.json");
         var key = Encoding.ASCII.GetBytes(jwtKey);
 
+        bool isAdmin = user.AdminGrantedAt.HasValue;
+
+        var claims = new List<Claim>
+        {
+            new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new Claim(ClaimTypes.Name, user.Username),
+            new Claim(ClaimTypes.Email, user.Email)
+        };
+
+        if (isAdmin)
+        {
+            claims.Add(new Claim(ClaimTypes.Role, "Admin")); // Add the "Admin" role claim
+        }
+
         var tokenDescriptor = new SecurityTokenDescriptor
         {
-            Subject = new ClaimsIdentity(
-                new[]
-                {
-                    new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-                    new Claim(ClaimTypes.Name, user.Username),
-                    new Claim(ClaimTypes.Email, user.Email)
-                    // Add other claims as needed (e.g., roles)
-                }
-            ),
+            Subject = new ClaimsIdentity(claims), // Use the list of claims
             Expires = DateTime.UtcNow.AddHours(2), // Token valid for 2 hours
             SigningCredentials = new SigningCredentials(
                 new SymmetricSecurityKey(key),
                 SecurityAlgorithms.HmacSha256Signature
             ),
-            // Ensure Issuer and Audience are also not null
             Issuer = jwtSettings["Issuer"] ?? throw new InvalidOperationException("JWT Issuer not configured in appsettings.json"),
             Audience = jwtSettings["Audience"] ?? throw new InvalidOperationException("JWT Audience not configured in appsettings.json")
         };
