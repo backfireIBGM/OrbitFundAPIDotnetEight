@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using MySql.Data.MySqlClient;
 using Microsoft.AspNetCore.Authorization;
 
+
 namespace OrbitFundAPIDotnetEight.Controllers
 {
     [ApiController]
@@ -34,7 +35,6 @@ namespace OrbitFundAPIDotnetEight.Controllers
             public List<string>? ImageUrls { get; set; }
             public List<string>? VideoUrls { get; set; }
             public List<string>? DocumentUrls { get; set; }
-            public DateTime CreatedAt { get; set; }
             public string? Status { get; set; }
         }
 
@@ -55,7 +55,7 @@ namespace OrbitFundAPIDotnetEight.Controllers
                 try
                 {
                     await connection.OpenAsync();
-                    string sql = "SELECT id FROM FormSubmissions WHERE Status = 'Pending' ORDER BY CreatedAt DESC";
+                    string sql = "SELECT id FROM FormSubmissions WHERE Status = 'Pending' ORDER BY id DESC";
                     using (MySqlCommand command = new MySqlCommand(sql, connection))
                     {
                         using (var reader = await command.ExecuteReaderAsync())
@@ -77,6 +77,7 @@ namespace OrbitFundAPIDotnetEight.Controllers
             }
         }
 
+        // GET: api/Approval/{id}
         [HttpGet("{id}")]
         public async Task<IActionResult> GetSubmissionDetails(int id)
         {
@@ -97,7 +98,7 @@ namespace OrbitFundAPIDotnetEight.Controllers
                     string sql = @"
                         SELECT
                             id, title, description, goals, type, launchDate, teamInfo, fundingGoal, duration,
-                            budgetBreakdown, rewards, image_urls, video_urls, document_urls, CreatedAt, Status
+                            budgetBreakdown, rewards, image_urls, video_urls, document_urls, Status
                         FROM FormSubmissions
                         WHERE id = @p_id";
 
@@ -121,7 +122,6 @@ namespace OrbitFundAPIDotnetEight.Controllers
                                     Duration = reader.IsDBNull(reader.GetOrdinal("duration")) ? (int?)null : reader.GetInt32(reader.GetOrdinal("duration")),
                                     BudgetBreakdown = reader.IsDBNull(reader.GetOrdinal("budgetBreakdown")) ? null : reader.GetString(reader.GetOrdinal("budgetBreakdown")),
                                     Rewards = reader.IsDBNull(reader.GetOrdinal("rewards")) ? null : reader.GetString(reader.GetOrdinal("rewards")),
-                                    CreatedAt = reader.GetDateTime(reader.GetOrdinal("CreatedAt")),
                                     Status = reader.IsDBNull(reader.GetOrdinal("Status")) ? null : reader.GetString(reader.GetOrdinal("Status"))
                                 };
 
