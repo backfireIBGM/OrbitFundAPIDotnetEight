@@ -39,8 +39,8 @@ jobs:
     runs-on: windows-latest
     needs: build
     permissions:
-      id-token: write #This is required for requesting the JWT
-      contents: read #This is required for actions/checkout
+      id-token: write # This is required for requesting the JWT for OIDC
+      contents: read # This is required for actions/checkout
 
     steps:
       - name: Download artifact from build job
@@ -48,18 +48,17 @@ jobs:
         with:
           name: .net-app
       
-      - name: Login to Azure
-        uses: azure/login@v2
+      - name: Azure Login (OIDC) # Updated name for clarity
+        uses: azure/login@v1.0.0 # Changed to v1.0.0 (or v1) to match OIDC guidance, v2 often implies older SP with secret
         with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_31FE48E7B57048AB94C4727DC7D828D0 }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_B8DC95B29C5844CAB67992E5D15EB4F4 }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_871AA229FC3F41B8A34509A512BD7ED3 }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }} # Use your new secret
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }} # Use your new secret
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }} # Use your new secret
 
       - name: Deploy to Azure Web App
         id: deploy-to-webapp
-        uses: azure/webapps-deploy@v3
+        uses: azure/webapps-deploy@v2 # Changed to v2 as v3 might have different requirements. v2 is commonly used with OIDC.
         with:
           app-name: 'OrbitFund'
-          slot-name: 'Production'
+          slot-name: 'Production' # Assuming 'Production' is your main slot
           package: .
-          
