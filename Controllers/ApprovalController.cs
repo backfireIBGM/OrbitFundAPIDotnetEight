@@ -1,6 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
 using MySql.Data.MySqlClient;
 using Microsoft.AspNetCore.Authorization;
+using Amazon.S3;
+using Amazon.S3.Model;
+using Amazon.Runtime;
 
 
 namespace OrbitFundAPIDotnetEight.Controllers
@@ -12,11 +15,35 @@ namespace OrbitFundAPIDotnetEight.Controllers
     {
         private readonly ILogger<ApprovalController> _logger;
         private readonly IConfiguration _configuration;
+        private readonly IAmazonS3 _s3Client;
+        private readonly string _e2BucketName;
+        private readonly int _e2UrlExpirationSeconds;
 
         public ApprovalController(ILogger<ApprovalController> logger, IConfiguration configuration)
         {
             _logger = logger;
             _configuration = configuration;
+
+            var accessKey = _configuration["IDriveE2:AccessKey"];
+            var secretKey = _configuration["IDriveE2:SecretKey"];
+            var serviceUrl = _configuration["IDriveE2:ServiceUrl"];
+            _e2BucketName = _configuration["IDriveE2:BucketName"] ?? throw new InvalidOperationException("IDriveE2:BucketName not configured!");
+            _e2UrlExpirationSeconds = _configuration.GetValue<int>("IDriveE2:UrlExpirationSeconds");
+
+            if (string.IsNullOrEmpty(accessKey) || string.IsNullOrEmpty(secretKey) || string.IsNullOrEmpty(serviceUrl))
+            {
+                _logger.LogError("IDriveE2 configuration (AccessKey, SecretKey, or ServiceUrl) is missing.");
+                throw new InvalidOperationException("iDrive E2 credentials or service URL are not configured.");
+            }
+
+            var credentials = new BasicAWSCredentials(accessKey, secretKey);
+
+            var s3Config = new AmazonS3Config
+            {
+                ServiceURL = serviceUrl,
+                ForcePathStyle = true
+            };
+            _s3Client = new AmazonS3Client(credentials, s3Config);
         }
 
         public class SubmissionDetailsDto
@@ -32,9 +59,9 @@ namespace OrbitFundAPIDotnetEight.Controllers
             public int? Duration { get; set; }
             public string? BudgetBreakdown { get; set; }
             public string? Rewards { get; set; }
-            public List<string>? ImageUrls { get; set; }
-            public List<string>? VideoUrls { get; set; }
-            public List<string>? DocumentUrls { get; set; }
+            public List<string>? ImageUrls { get; set; } = new List<string>();
+            public List<string>? VideoUrls { get; set; } = new List<string>();
+            public List<string>? DocumentUrls { get; set; } = new List<string>();
             public string? Status { get; set; }
         }
 
@@ -76,6 +103,19 @@ namespace OrbitFundAPIDotnetEight.Controllers
                 }
             }
         }
+
+        private string GeneratePresignedUrl(string objectKey)
+        {
+            var request = new GetPreSignedUrlRequest
+            {
+                BucketName = _e2BucketName,
+                Key = objectKey,
+                Verb = HttpVerb.GET,
+                Expires = DateTime.UtcNow.AddSeconds(_e2UrlExpirationSeconds)
+            };
+            return _s3Client.GetPreSignedURL(request);
+        }
+
 
         // GET: api/Approval/{id}
         [HttpGet("{id}")]
@@ -125,9 +165,26 @@ namespace OrbitFundAPIDotnetEight.Controllers
                                     Status = reader.IsDBNull(reader.GetOrdinal("Status")) ? null : reader.GetString(reader.GetOrdinal("Status"))
                                 };
 
-                                submission.ImageUrls = reader.IsDBNull(reader.GetOrdinal("image_urls")) ? new List<string>() : reader.GetString(reader.GetOrdinal("image_urls")).Split(',', StringSplitOptions.RemoveEmptyEntries).ToList();
-                                submission.VideoUrls = reader.IsDBNull(reader.GetOrdinal("video_urls")) ? new List<string>() : reader.GetString(reader.GetOrdinal("video_urls")).Split(',', StringSplitOptions.RemoveEmptyEntries).ToList();
-                                submission.DocumentUrls = reader.IsDBNull(reader.GetOrdinal("document_urls")) ? new List<string>() : reader.GetString(reader.GetOrdinal("document_urls")).Split(',', StringSplitOptions.RemoveEmptyEntries).ToList();
+                                submission.ImageUrls = reader.IsDBNull(reader.GetOrdinal("image_urls"))
+                                    ? new List<string>()
+                                    : reader.GetString(reader.GetOrdinal("image_urls"))
+                                            .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                                            .Select(url => GeneratePresignedUrl(url.Trim()))
+                                            .ToList();
+
+                                submission.VideoUrls = reader.IsDBNull(reader.GetOrdinal("video_urls"))
+                                    ? new List<string>()
+                                    : reader.GetString(reader.GetOrdinal("video_urls"))
+                                            .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                                            .Select(url => GeneratePresignedUrl(url.Trim()))
+                                            .ToList();
+
+                                submission.DocumentUrls = reader.IsDBNull(reader.GetOrdinal("document_urls"))
+                                    ? new List<string>()
+                                    : reader.GetString(reader.GetOrdinal("document_urls"))
+                                            .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                                            .Select(url => GeneratePresignedUrl(url.Trim()))
+                                            .ToList();
                             }
                         }
                     }
@@ -145,6 +202,11 @@ namespace OrbitFundAPIDotnetEight.Controllers
                 {
                     _logger.LogError(ex, "MySQL Error fetching submission details for ID {Id}: {Message}", id, ex.Message);
                     return StatusCode(500, $"Database error: {ex.Message}");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error processing S3 URLs for submission ID {Id}: {Message}", id, ex.Message);
+                    return StatusCode(500, $"Server error processing file URLs: {ex.Message}");
                 }
             }
         }
