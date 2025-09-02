@@ -49,7 +49,7 @@ jobs:
           name: .net-app
       
       - name: Azure Login (OIDC) # Updated name for clarity
-        uses: azure/login@v1.0.0 # Changed to v1.0.0 (or v1) to match OIDC guidance, v2 often implies older SP with secret
+        uses: azure/login@v1 # <--- CHANGE THIS LINE: Use 'v1' instead of 'v1.0.0'
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }} # Use your new secret
           tenant-id: ${{ secrets.AZURE_TENANT_ID }} # Use your new secret
@@ -57,8 +57,8 @@ jobs:
 
       - name: Deploy to Azure Web App
         id: deploy-to-webapp
-        uses: azure/webapps-deploy@v2 # Changed to v2 as v3 might have different requirements. v2 is commonly used with OIDC.
+        uses: azure/webapps-deploy@v2 # Keep v2 for webapps-deploy
         with:
           app-name: 'OrbitFund'
-          slot-name: 'Production' # Assuming 'Production' is your main slot
+          slot-name: 'Production'
           package: .
