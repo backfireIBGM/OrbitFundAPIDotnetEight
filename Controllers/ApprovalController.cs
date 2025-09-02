@@ -179,7 +179,6 @@ namespace OrbitFundAPIDotnetEight.Controllers
                                             .Select(url => GeneratePresignedUrl(url.Trim()))
                                             .ToList();
 
-
                                 submission.DocumentUrls = reader.IsDBNull(reader.GetOrdinal("document_urls"))
                                     ? new List<string>()
                                     : reader.GetString(reader.GetOrdinal("document_urls"))
