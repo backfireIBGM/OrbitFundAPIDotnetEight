@@ -6,6 +6,8 @@
     "azureFunctions.preDeployTask": "publish (functions)",
     "cSpell.words": [
         "AWSSDK",
+        "Backblaze",
+        "backblazeb",
         "Hmac",
         "idrive",
         "IFORMFILE",

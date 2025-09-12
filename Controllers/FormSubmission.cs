@@ -13,47 +13,47 @@ namespace OrbitFundAPIDotnetEight.Controllers
         private readonly ILogger<SubmissionController> _logger;
         private readonly IConfiguration _configuration;
 
-        // Configuration for IDrive S3-Compatible Storage
-        private readonly string? _idriveAccessKey;
-        private readonly string? _idriveSecretKey;
-        private readonly string? _idriveServiceUrl;
-        private readonly string? _idriveBucketName;
+        // Configuration for Backblaze B2 S3-Compatible Storage
+        private readonly string? _b2AccessKeyId;
+        private readonly string? _b2ApplicationKey;
+        private readonly string? _b2ServiceUrl;
+        private readonly string? _b2BucketName;
 
         public SubmissionController(ILogger<SubmissionController> logger, IConfiguration configuration)
         {
             _logger = logger;
             _configuration = configuration;
 
-            _logger.LogInformation("Attempting to load configuration for IDrive S3.");
+            _logger.LogInformation("Attempting to load configuration for Backblaze B2 S3.");
 
-            // Retrieve IDrive S3 credentials from appsettings.json
-            _idriveAccessKey = _configuration["IDriveS3:AccessKey"];
-            _idriveSecretKey = _configuration["IDriveS3:SecretKey"];
-            _idriveServiceUrl = _configuration["IDriveS3:ServiceUrl"];
-            _idriveBucketName = _configuration["IDriveS3:BucketName"];
+            // Retrieve Backblaze B2 credentials from appsettings.json
+            _b2AccessKeyId = _configuration["BackblazeB2S3:AccessKeyId"];
+            _b2ApplicationKey = _configuration["BackblazeB2S3:ApplicationKey"];
+            _b2ServiceUrl = _configuration["BackblazeB2S3:ServiceUrl"];
+            _b2BucketName = _configuration["BackblazeB2S3:BucketName"];
 
-            // Log null configuration keys for IDrive S3
-            if (string.IsNullOrEmpty(_idriveAccessKey))
+            // Log null configuration keys for Backblaze B2 S3
+            if (string.IsNullOrEmpty(_b2AccessKeyId))
             {
-                _logger.LogError("IDriveS3:AccessKey is NULL or empty in configuration.");
-                throw new InvalidOperationException("IDriveS3:AccessKey not configured.");
+                _logger.LogError("BackblazeB2S3:AccessKeyId is NULL or empty in configuration.");
+                throw new InvalidOperationException("BackblazeB2S3:AccessKeyId not configured.");
             }
-            if (string.IsNullOrEmpty(_idriveSecretKey))
+            if (string.IsNullOrEmpty(_b2ApplicationKey))
             {
-                _logger.LogError("IDriveS3:SecretKey is NULL or empty in configuration.");
-                throw new InvalidOperationException("IDriveS3:SecretKey not configured.");
+                _logger.LogError("BackblazeB2S3:ApplicationKey is NULL or empty in configuration.");
+                throw new InvalidOperationException("BackblazeB2S3:ApplicationKey not configured.");
             }
-            if (string.IsNullOrEmpty(_idriveServiceUrl))
+            if (string.IsNullOrEmpty(_b2ServiceUrl))
             {
-                _logger.LogError("IDriveS3:ServiceUrl is NULL or empty in configuration.");
-                throw new InvalidOperationException("IDriveS3:ServiceUrl not configured.");
+                _logger.LogError("BackblazeB2S3:ServiceUrl is NULL or empty in configuration.");
+                throw new InvalidOperationException("BackblazeB2S3:ServiceUrl not configured.");
             }
-            if (string.IsNullOrEmpty(_idriveBucketName))
+            if (string.IsNullOrEmpty(_b2BucketName))
             {
-                _logger.LogError("IDriveS3:BucketName is NULL or empty in configuration.");
-                throw new InvalidOperationException("IDriveS3:BucketName not configured.");
+                _logger.LogError("BackblazeB2S3:BucketName is NULL or empty in configuration.");
+                throw new InvalidOperationException("BackblazeB2S3:BucketName not configured.");
             }
-             _logger.LogInformation("IDrive S3 configuration loading complete. Check preceding errors for missing keys.");
+             _logger.LogInformation("Backblaze B2 S3 configuration loading complete. Check preceding errors for missing keys.");
         }
 
         [HttpPost]
@@ -118,22 +118,22 @@ namespace OrbitFundAPIDotnetEight.Controllers
             List<string> savedDocUrls = new List<string>();
             bool fileOperationsSucceeded = true;
 
-            if (string.IsNullOrEmpty(_idriveAccessKey) || string.IsNullOrEmpty(_idriveSecretKey) ||
-                string.IsNullOrEmpty(_idriveServiceUrl) || string.IsNullOrEmpty(_idriveBucketName))
+            if (string.IsNullOrEmpty(_b2AccessKeyId) || string.IsNullOrEmpty(_b2ApplicationKey) ||
+                string.IsNullOrEmpty(_b2ServiceUrl) || string.IsNullOrEmpty(_b2BucketName))
             {
-                _logger.LogError("Cannot proceed with S3 operations: One or more IDrive S3 configuration keys are missing or null.");
-                return StatusCode(500, "Server configuration error: IDrive S3 storage not properly configured.");
+                _logger.LogError("Cannot proceed with S3 operations: One or more Backblaze B2 S3 configuration keys are missing or null.");
+                return StatusCode(500, "Server configuration error: Backblaze B2 S3 storage not properly configured.");
             }
 
 
             var s3Config = new AmazonS3Config
             {
-                ServiceURL = _idriveServiceUrl,
-                ForcePathStyle = true, // Often required for S3-compatible services
+                ServiceURL = _b2ServiceUrl,
+                ForcePathStyle = true,
             };
 
-            // Use BasicAWSCredentials with your IDrive keys
-            var credentials = new BasicAWSCredentials(_idriveAccessKey, _idriveSecretKey);
+            // Use BasicAWSCredentials with your Backblaze B2 Application Key ID and Application Key
+            var credentials = new BasicAWSCredentials(_b2AccessKeyId, _b2ApplicationKey);
 
             using (var s3Client = new AmazonS3Client(credentials, s3Config))
             {
@@ -148,35 +148,44 @@ namespace OrbitFundAPIDotnetEight.Controllers
                             return null;
                         }
 
-                        string fileName = $"{folder}/{Guid.NewGuid()}{Path.GetExtension(file.FileName)}";
+                        string fileNameInBucket = $"{folder}/{Guid.NewGuid()}{Path.GetExtension(file.FileName)}";
 
                         try
                         {
                             var putRequest = new PutObjectRequest
                             {
-                                BucketName = _idriveBucketName,
-                                Key = fileName,
+                                BucketName = _b2BucketName,
+                                Key = fileNameInBucket,
                                 InputStream = file.OpenReadStream(),
                                 ContentType = file.ContentType
                             };
 
-                            putRequest.CannedACL = S3CannedACL.PublicRead;
+                            putRequest.CannedACL = S3CannedACL.PublicRead; // Keep this, but verify B2 bucket settings.
+
 
                             await s3Client.PutObjectAsync(putRequest);
 
-                            string fileUrl = $"{_idriveServiceUrl}/{_idriveBucketName}/{fileName}";
-                            _logger.LogInformation($"Successfully uploaded {file.FileName} to IDrive S3: {fileUrl}");
+                            string? publicFileUrlPrefix = _configuration["BackblazeB2S3:PublicFileUrlPrefix"];
+                            if (string.IsNullOrEmpty(publicFileUrlPrefix))
+                            {
+                                _logger.LogError("BackblazeB2S3:PublicFileUrlPrefix is NULL or empty in configuration. Cannot construct public file URLs.");
+                                throw new InvalidOperationException("BackblazeB2S3:PublicFileUrlPrefix not configured.");
+                            }
+
+                            // Construct the actual public file URL
+                            string fileUrl = $"{publicFileUrlPrefix}/{_b2BucketName}/{fileNameInBucket}";
+                            _logger.LogInformation($"Successfully uploaded {file.FileName} to Backblaze B2 S3: {fileUrl}");
                             return fileUrl;
                         }
                         catch (AmazonS3Exception s3Ex)
                         {
-                            _logger.LogError(s3Ex, "IDrive S3 Upload Failed for '{FileName}'. AWS Error Code: {ErrorCode}. Message: {Message}", file.FileName, s3Ex.ErrorCode, s3Ex.Message);
+                            _logger.LogError(s3Ex, "Backblaze B2 S3 Upload Failed for '{FileName}'. AWS Error Code: {ErrorCode}. Message: {Message}", file.FileName, s3Ex.ErrorCode, s3Ex.Message);
                             fileOperationsSucceeded = false;
                             return null;
                         }
                         catch (Exception s3Ex)
                         {
-                            _logger.LogError(s3Ex, "General Error uploading file '{FileName}' to IDrive S3. Message: {Message}", file.FileName, s3Ex.Message);
+                            _logger.LogError(s3Ex, "General Error uploading file '{FileName}' to Backblaze B2 S3. Message: {Message}", file.FileName, s3Ex.Message);
                             fileOperationsSucceeded = false;
                             return null;
                         }
@@ -266,7 +275,7 @@ namespace OrbitFundAPIDotnetEight.Controllers
                                 command.Parameters.AddWithValue("@p_documentUrls", docUrlsString);
 
                                 await command.ExecuteNonQueryAsync();
-                                _logger.LogInformation($"Successfully stored core mission data and IDrive S3 URLs for: '{title ?? "N/A"}'.");
+                                _logger.LogInformation($"Successfully stored core mission data and Backblaze B2 S3 URLs for: '{title ?? "N/A"}'.");
                             }
                         }
                         catch (MySqlException ex)
@@ -285,10 +294,10 @@ namespace OrbitFundAPIDotnetEight.Controllers
 
             if (!fileOperationsSucceeded)
             {
-                return Ok($"Mission '{title ?? "N/A"}' data submitted successfully! WARNING: Some files were not uploaded to IDrive S3 due to errors.");
+                return Ok($"Mission '{title ?? "N/A"}' data submitted successfully! WARNING: Some files were not uploaded to Backblaze B2 S3 due to errors.");
             }
 
-            return Ok($"Mission '{title ?? "N/A"}' and all associated files uploaded to IDrive S3 and data submitted successfully!");
+            return Ok($"Mission '{title ?? "N/A"}' and all associated files uploaded to Backblaze B2 S3 and data submitted successfully!");
         }
     }
 }
