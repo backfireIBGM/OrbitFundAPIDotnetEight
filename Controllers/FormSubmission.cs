@@ -26,11 +26,17 @@ namespace OrbitFundAPIDotnetEight.Controllers
 
             _logger.LogInformation("Attempting to load configuration for Backblaze B2 S3.");
 
+            _b2AccessKeyId = _configuration.GetConnectionString("BackblazeB2S3:AccessKeyId");
+            _b2AccessKeyId = _configuration.GetConnectionString("BackblazeB2S3:ApplicationKey");
+            _b2AccessKeyId = _configuration.GetConnectionString("BackblazeB2S3:ApplicationKey");
+            _b2AccessKeyId = _configuration.GetConnectionString("BackblazeB2S3:ServiceUrl");
+            _b2AccessKeyId = _configuration.GetConnectionString("BackblazeB2S3:BucketName");
+
             // Retrieve Backblaze B2 credentials from appsettings.json
-            _b2AccessKeyId = _configuration["BackblazeB2S3:AccessKeyId"];
-            _b2ApplicationKey = _configuration["BackblazeB2S3:ApplicationKey"];
-            _b2ServiceUrl = _configuration["BackblazeB2S3:ServiceUrl"];
-            _b2BucketName = _configuration["BackblazeB2S3:BucketName"];
+            // _b2AccessKeyId = _configuration["BackblazeB2S3:AccessKeyId"];
+            // _b2ApplicationKey = _configuration["BackblazeB2S3:ApplicationKey"];
+            // _b2ServiceUrl = _configuration["BackblazeB2S3:ServiceUrl"];
+            // _b2BucketName = _configuration["BackblazeB2S3:BucketName"];
 
             // Log null configuration keys for Backblaze B2 S3
             if (string.IsNullOrEmpty(_b2AccessKeyId))
