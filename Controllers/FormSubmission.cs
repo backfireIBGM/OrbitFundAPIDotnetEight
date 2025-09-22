@@ -14,53 +14,47 @@ namespace OrbitFundAPIDotnetEight.Controllers
         private readonly IConfiguration _configuration;
 
         // Configuration for Backblaze B2 S3-Compatible Storage
-        private readonly string? _b2AccessKeyId;
-        private readonly string? _b2ApplicationKey;
-        private readonly string? _b2ServiceUrl;
-        private readonly string? _b2BucketName;
+private readonly string? _b2AccessKeyId;
+private readonly string? _b2ApplicationKey;
+private readonly string? _b2ServiceUrl;
+private readonly string? _b2BucketName;
 
-        public SubmissionController(ILogger<SubmissionController> logger, IConfiguration configuration)
+    public SubmissionController(ILogger<SubmissionController> logger, IConfiguration configuration)
+    {
+        _logger = logger;
+        _configuration = configuration;
+
+        _logger.LogInformation("Attempting to load configuration for Backblaze B2 S3.");
+
+        // Retrieve Backblaze B2 credentials from Azure App Settings (using indexer for non-connection-string settings)
+        _b2AccessKeyId = _configuration["BackblazeB2S3:AccessKeyId"];
+        _b2ApplicationKey = _configuration["BackblazeB2S3:ApplicationKey"];
+        _b2ServiceUrl = _configuration["BackblazeB2S3:ServiceUrl"];
+        _b2BucketName = _configuration["BackblazeB2S3:BucketName"];
+
+        // Log null configuration keys for Backblaze B2 S3 (these checks are good)
+        if (string.IsNullOrEmpty(_b2AccessKeyId))
         {
-            _logger = logger;
-            _configuration = configuration;
-
-            _logger.LogInformation("Attempting to load configuration for Backblaze B2 S3.");
-
-            _b2AccessKeyId = _configuration.GetConnectionString("BackblazeB2S3:AccessKeyId");
-            _b2AccessKeyId = _configuration.GetConnectionString("BackblazeB2S3:ApplicationKey");
-            _b2AccessKeyId = _configuration.GetConnectionString("BackblazeB2S3:ApplicationKey");
-            _b2AccessKeyId = _configuration.GetConnectionString("BackblazeB2S3:ServiceUrl");
-            _b2AccessKeyId = _configuration.GetConnectionString("BackblazeB2S3:BucketName");
-
-            // Retrieve Backblaze B2 credentials from appsettings.json
-            // _b2AccessKeyId = _configuration["BackblazeB2S3:AccessKeyId"];
-            // _b2ApplicationKey = _configuration["BackblazeB2S3:ApplicationKey"];
-            // _b2ServiceUrl = _configuration["BackblazeB2S3:ServiceUrl"];
-            // _b2BucketName = _configuration["BackblazeB2S3:BucketName"];
-
-            // Log null configuration keys for Backblaze B2 S3
-            if (string.IsNullOrEmpty(_b2AccessKeyId))
-            {
-                _logger.LogError("BackblazeB2S3:AccessKeyId is NULL or empty in configuration.");
-                throw new InvalidOperationException("BackblazeB2S3:AccessKeyId not configured.");
-            }
-            if (string.IsNullOrEmpty(_b2ApplicationKey))
-            {
-                _logger.LogError("BackblazeB2S3:ApplicationKey is NULL or empty in configuration.");
-                throw new InvalidOperationException("BackblazeB2S3:ApplicationKey not configured.");
-            }
-            if (string.IsNullOrEmpty(_b2ServiceUrl))
-            {
-                _logger.LogError("BackblazeB2S3:ServiceUrl is NULL or empty in configuration.");
-                throw new InvalidOperationException("BackblazeB2S3:ServiceUrl not configured.");
-            }
-            if (string.IsNullOrEmpty(_b2BucketName))
-            {
-                _logger.LogError("BackblazeB2S3:BucketName is NULL or empty in configuration.");
-                throw new InvalidOperationException("BackblazeB2S3:BucketName not configured.");
-            }
-             _logger.LogInformation("Backblaze B2 S3 configuration loading complete. Check preceding errors for missing keys.");
+            _logger.LogError("BackblazeB2S3:AccessKeyId is NULL or empty in configuration.");
+            throw new InvalidOperationException("BackblazeB2S3:AccessKeyId not configured.");
         }
+        if (string.IsNullOrEmpty(_b2ApplicationKey))
+        {
+            _logger.LogError("BackblazeB2S3:ApplicationKey is NULL or empty in configuration.");
+            throw new InvalidOperationException("BackblazeB2S3:ApplicationKey not configured.");
+        }
+        if (string.IsNullOrEmpty(_b2ServiceUrl))
+        {
+            _logger.LogError("BackblazeB2S3:ServiceUrl is NULL or empty in configuration.");
+            throw new InvalidOperationException("BackblazeB2S3:ServiceUrl not configured.");
+        }
+        if (string.IsNullOrEmpty(_b2BucketName))
+        {
+            _logger.LogError("BackblazeB2S3:BucketName is NULL or empty in configuration.");
+            throw new InvalidOperationException("BackblazeB2S3:BucketName not configured.");
+        }
+        _logger.LogInformation("Backblaze B2 S3 configuration loading complete. Check preceding errors for missing keys.");
+    }
 
         [HttpPost]
         public async Task<IActionResult> HandleMissionSubmission(
