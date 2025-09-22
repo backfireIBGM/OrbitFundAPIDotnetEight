@@ -28,7 +28,7 @@ namespace OrbitFundAPIDotnetEight.Controllers
 
             _logger.LogInformation("Attempting to load configuration for Backblaze B2 S3.");
 
-            // >>>>>> START: Re-added Backblaze B2 S3 key assignments and checks <<<<<<
+            // Re-added Backblaze B2 S3 key assignments and checks (from Stage 2)
             _b2AccessKeyId = _configuration["BackblazeB2S3:AccessKeyId"];
             _b2ApplicationKey = _configuration["BackblazeB2S3:ApplicationKey"];
             _b2ServiceUrl = _configuration["BackblazeB2S3:ServiceUrl"];
@@ -54,27 +54,61 @@ namespace OrbitFundAPIDotnetEight.Controllers
                 _logger.LogError("BackblazeB2S3:BucketName is NULL or empty in configuration.");
                 throw new InvalidOperationException("BackblazeB2S3:BucketName not configured.");
             }
-            // >>>>>> END: Re-added Backblaze B2 S3 key assignments and checks <<<<<<
-
             _logger.LogInformation("Backblaze B2 S3 configuration loading complete. All keys verified as non-empty.");
         }
 
         [HttpPost]
-        public IActionResult HandleMissionSubmission() // Still minimal parameters
-        {
-            _logger.LogInformation("Submission endpoint hit successfully (EXTREME MINIMAL TEST - Stage 2).");
-            return Ok("Minimal Submission endpoint reached (Stage 2)!");
-        }
-
-        // REMOVE OR COMMENT OUT ALL ORIGINAL HandleMissionSubmission method code for this stage.
-        /*
         public async Task<IActionResult> HandleMissionSubmission(
+            // >>>>>> START: Re-added original [FromForm] parameters <<<<<<
             [FromForm] string? title,
-            // ... all your original parameters
+            [FromForm] string? description,
+            [FromForm] string? goals,
+            [FromForm] string? type,
+            [FromForm] DateTime? launchDate,
+            [FromForm] string? teamInfo,
+            [FromForm] List<IFormFile>? images,
+            [FromForm] List<IFormFile>? video,
+            [FromForm] List<IFormFile>? documents,
+            [FromForm] decimal? fundingGoal,
+            [FromForm] int? duration,
+            [FromForm] string? budgetBreakdown,
+            [FromForm] string? rewards
+            // >>>>>> END: Re-added original [FromForm] parameters <<<<<<
         )
         {
-            // ... all your original method body logic
+            // >>>>>> START: Re-added initial method body logging and ReadFormAsync <<<<<<
+            _logger.LogInformation("CT={ct}", Request.ContentType);
+
+            try
+            {
+                var form = await Request.ReadFormAsync();
+                _logger.LogInformation("Form keys: {keys}", string.Join(", ", form.Keys));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "ReadFormAsync failed");
+            }
+
+            _logger.LogInformation("--- Incoming Submission Data ---");
+            _logger.LogInformation($"Title: {title ?? "NULL"}");
+            // ... (keep the rest of the logging for all parameters)
+            _logger.LogInformation($"Description: {description ?? "NULL"}");
+            _logger.LogInformation($"Goals: {goals ?? "NULL"}");
+            _logger.LogInformation($"Type: {type ?? "NULL"}");
+            _logger.LogInformation($"Launch Date: {launchDate?.ToString() ?? "NULL"}");
+            _logger.LogInformation($"Team Info: {teamInfo ?? "NULL"}");
+            _logger.LogInformation($"Funding Goal: {fundingGoal}");
+            _logger.LogInformation($"Duration: {duration}");
+            _logger.LogInformation($"Budget Breakdown: {budgetBreakdown ?? "NULL"}");
+            _logger.LogInformation($"Rewards: {rewards ?? "NULL"}");
+            _logger.LogInformation($"Image Count: {(images != null ? images.Count : 0)}");
+            _logger.LogInformation($"Video Count: {(video != null ? video.Count : 0)}");
+            _logger.LogInformation($"Document Count: {(documents != null ? documents.Count : 0)}");
+            _logger.LogInformation("--- End Incoming Submission Data ---");
+            // >>>>>> END: Re-added initial method body logging and ReadFormAsync <<<<<<
+
+            // Returning OK for now, the rest of the logic (DB, S3) will come later
+            return Ok("Submission endpoint reached (Stage 3) - Parameters bound!");
         }
-        */
     }
 }
