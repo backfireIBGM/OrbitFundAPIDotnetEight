@@ -1,7 +1,3 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Configuration; // Required for IConfiguration
 using MySql.Data.MySqlClient; // For MySqlConnection
 using System.Data; // For IDbConnection
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -29,30 +25,30 @@ builder.Services.AddTransient<IDbConnection>(sp =>
 });
 
 // Temporarily comment out this entire block to isolate JWT
-// builder.Services
-//     .AddAuthentication(options =>
-//     {
-//         options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-//         options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-//     })
-//     .AddJwtBearer(options =>
-//     {
-//         options.TokenValidationParameters = new TokenValidationParameters
-//         {
-//             ValidateIssuer = true,
-//             ValidateAudience = true,
-//             ValidateLifetime = true,
-//             ValidateIssuerSigningKey = true,
-//             ValidIssuer = builder.Configuration["JwtSettings:Issuer"],
-//             ValidAudience = builder.Configuration["JwtSettings:Audience"],
-//             IssuerSigningKey = new SymmetricSecurityKey(
-//                 Encoding.UTF8.GetBytes(
-//                     builder.Configuration["JwtSettings:Key"]
-//                         ?? throw new InvalidOperationException("JWT Key not configured!")
-//                 )
-//             )
-//         };
-//     });
+builder.Services
+    .AddAuthentication(options =>
+    {
+        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    })
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = builder.Configuration["JwtSettings:Issuer"],
+            ValidAudience = builder.Configuration["JwtSettings:Audience"],
+            IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(
+                    builder.Configuration["JwtSettings:Key"]
+                        ?? throw new InvalidOperationException("JWT Key not configured!")
+                )
+            )
+        };
+    });
 
 builder.Services.AddCors(options =>
 {
