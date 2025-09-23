@@ -124,7 +124,7 @@ namespace OrbitFundAPIDotnetEight.Controllers
                 return StatusCode(500, "Server configuration error: Backblaze B2 S3 storage not properly configured.");
             }
 
-            // >>>>>> START: S3 Client/Config Instantiation Test <<<<<<
+            // >>>>>> START: S3 Client/Config Instantiation Test (Modified) <<<<<<
             try
             {
                 _logger.LogInformation("Attempting to instantiate AmazonS3Config and BasicAWSCredentials.");
@@ -136,12 +136,13 @@ namespace OrbitFundAPIDotnetEight.Controllers
                 var credentialsTest = new BasicAWSCredentials(_b2AccessKeyId, _b2ApplicationKey);
                 _logger.LogInformation("AmazonS3Config and BasicAWSCredentials instantiated successfully!");
             }
-            catch (Exception ex)
+            catch (Exception ex) // <<<<< This is the catch block being hit!
             {
-                _logger.LogError(ex, "FATAL ERROR: Failed to instantiate AmazonS3Config or BasicAWSCredentials! This is likely the cause of the 500.0. Exception: {Message}", ex.Message);
-                return StatusCode(500, "Server configuration error: Failed to initialize S3 client components.");
+                // >>>>> MODIFICATION HERE: Return the actual exception message to the client <<<<<
+                _logger.LogError(ex, "FATAL ERROR: Failed to instantiate AmazonS3Config or BasicAWSCredentials! Exception: {Message}", ex.Message); // Keep for local logs if it ever works
+                return StatusCode(500, $"Server configuration error: Failed to initialize S3 client components. Details: {ex.Message}"); // THIS LINE IS CHANGED!
             }
-            // >>>>>> END: S3 Client/Config Instantiation Test <<<<<<
+            // >>>>>> END: S3 Client/Config Instantiation Test (Modified) <<<<<<
 
 
             // >>>>>> Temporary return to isolate the S3 client/config test <<<<<<
