@@ -53,3 +53,16 @@ D:\WebDev\OrbitFundAPIDotnetEight\bin\Debug\net8.0\OrbitFundAPIDotnetEight.runti
 d:\WebDev\OrbitFundAPIDotnetEight\bin\Debug\net8.0\OrbitFundAPIDotnetEight.pdb
 D:\WebDev\OrbitFundAPIDotnetEight\obj\Debug\net8.0\OrbitFundAPIDotnetEight.genruntimeconfig.cache
 D:\WebDev\OrbitFundAPIDotnetEight\obj\Debug\net8.0\ref\OrbitFundAPIDotnetEight.dll
+d:\WebDev\OrbitFundAPIDotnetEight\bin\Debug\net8.0\appsettings.json
+d:\WebDev\OrbitFundAPIDotnetEight\bin\Debug\net8.0\AWSSDK.Core.dll
+d:\WebDev\OrbitFundAPIDotnetEight\bin\Debug\net8.0\AWSSDK.S3.dll
+d:\WebDev\OrbitFundAPIDotnetEight\bin\Debug\net8.0\BCrypt.Net-Next.dll
+d:\WebDev\OrbitFundAPIDotnetEight\bin\Debug\net8.0\Dapper.dll
+d:\WebDev\OrbitFundAPIDotnetEight\bin\Debug\net8.0\Microsoft.AspNetCore.Authentication.JwtBearer.dll
+d:\WebDev\OrbitFundAPIDotnetEight\bin\Debug\net8.0\Microsoft.IdentityModel.Abstractions.dll
+d:\WebDev\OrbitFundAPIDotnetEight\bin\Debug\net8.0\Microsoft.IdentityModel.JsonWebTokens.dll
+d:\WebDev\OrbitFundAPIDotnetEight\bin\Debug\net8.0\Microsoft.IdentityModel.Logging.dll
+d:\WebDev\OrbitFundAPIDotnetEight\bin\Debug\net8.0\Microsoft.IdentityModel.Protocols.dll
+d:\WebDev\OrbitFundAPIDotnetEight\bin\Debug\net8.0\Microsoft.IdentityModel.Protocols.OpenIdConnect.dll
+d:\WebDev\OrbitFundAPIDotnetEight\bin\Debug\net8.0\Microsoft.IdentityModel.Tokens.dll
+d:\WebDev\OrbitFundAPIDotnetEight\bin\Debug\net8.0\System.IdentityModel.Tokens.Jwt.dll

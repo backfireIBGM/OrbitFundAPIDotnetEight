@@ -111,10 +111,15 @@ namespace OrbitFundAPIDotnetEight.Controllers
                 _logger.LogInformation("MySQL Connection string 'connectionString' successfully loaded.");
             }
 
+            // Correct place to declare these, at the method scope
             List<string> savedImageUrls = new List<string>();
             List<string> savedVideoUrls = new List<string>();
             List<string> savedDocUrls = new List<string>();
             bool fileOperationsSucceeded = true;
+
+            string? imageUrlsString = null; // Initialize here
+            string? videoUrlsString = null; // Initialize here
+            string? docUrlsString = null;   // Initialize here
 
             if (string.IsNullOrEmpty(_b2AccessKeyId) || string.IsNullOrEmpty(_b2ApplicationKey) ||
                 string.IsNullOrEmpty(_b2ServiceUrl) || string.IsNullOrEmpty(_b2BucketName))
@@ -135,6 +140,7 @@ namespace OrbitFundAPIDotnetEight.Controllers
             {
                 try
                 {
+                    // This local function is correctly placed inside the s3Client's scope
                     async Task<string?> UploadFileToS3(IFormFile file, string folder)
                     {
                         if (file == null || file.Length == 0 || string.IsNullOrEmpty(file.FileName))
@@ -228,10 +234,10 @@ namespace OrbitFundAPIDotnetEight.Controllers
                         }
                     }
 
-                    // Convert lists of URLs to a single string for storage
-                    string? imageUrlsString = savedImageUrls.Any() ? string.Join(",", savedImageUrls) : null;
-                    string? videoUrlsString = savedVideoUrls.Any() ? string.Join(",", savedVideoUrls) : null;
-                    string? docUrlsString = savedDocUrls.Any() ? string.Join(",", savedDocUrls) : null;
+                    // Now, assign values to the previously declared variables
+                    imageUrlsString = savedImageUrls.Any() ? string.Join(",", savedImageUrls) : null;
+                    videoUrlsString = savedVideoUrls.Any() ? string.Join(",", savedVideoUrls) : null;
+                    docUrlsString = savedDocUrls.Any() ? string.Join(",", savedDocUrls) : null;
 
                     using (MySqlConnection connection = new MySqlConnection(connectionString))
                     {
@@ -274,23 +280,23 @@ namespace OrbitFundAPIDotnetEight.Controllers
                         catch (MySqlException ex)
                         {
                             _logger.LogError(ex, "MySQL Error during submission (Connect/Insert): {Message}. Error Code: {ErrorCode}", ex.Message, ex.ErrorCode);
-                            return StatusCode(500, $"Database error processing your submission: {ex.Message}");
+                            return StatusCode(500, $"Database error processing your submission: {ex.Message}. Attempted Image URLs: {imageUrlsString ?? "N/A"}, Video URLs: {videoUrlsString ?? "N/A"}, Document URLs: {docUrlsString ?? "N/A"}");
                         }
                     }
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "General Error during submission processing (incl. S3 client creation, file upload loop): {Message}", ex.Message);
-                    return StatusCode(500, $"An internal error occurred processing your submission: {ex.Message}");
+                    return StatusCode(500, $"An internal error occurred processing your submission: {ex.Message}. Attempted Image URLs: {imageUrlsString ?? "N/A"}, Video URLs: {videoUrlsString ?? "N/A"}, Document URLs: {docUrlsString ?? "N/A"}");
                 }
             }
 
             if (!fileOperationsSucceeded)
             {
-                return Ok($"Mission '{title ?? "N/A"}' data submitted successfully! WARNING: Some files were not uploaded to Backblaze B2 S3 due to errors.");
+                return Ok($"Mission '{title ?? "N/A"}' data submitted successfully! WARNING: Some files were not uploaded to Backblaze B2 S3 due to errors. Attempted Image URLs: {imageUrlsString ?? "N/A"}, Video URLs: {videoUrlsString ?? "N/A"}, Document URLs: {docUrlsString ?? "N/A"}");
             }
 
-            return Ok($"Mission '{title ?? "N/A"}' and all associated files uploaded to Backblaze B2 S3 and data submitted successfully!");
+            return Ok($"Mission '{title ?? "N/A"}' and all associated files uploaded to Backblaze B2 S3 and data submitted successfully! Attempted Image URLs: {imageUrlsString ?? "N/A"}, Video URLs: {videoUrlsString ?? "N/A"}, Document URLs: {docUrlsString ?? "N/A"}");
         }
     }
 }
