@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("OrbitFundAPIDotnetEight")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+0eed3975b1372c2c58cc64751bea6e67b1e51634")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+1595c156d522f1a5dc6d215bf9f19fa88938dae2")]
 [assembly: System.Reflection.AssemblyProductAttribute("OrbitFundAPIDotnetEight")]
 [assembly: System.Reflection.AssemblyTitleAttribute("OrbitFundAPIDotnetEight")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

@@ -5,6 +5,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Configuration.AddEnvironmentVariables();
 
 // Add services to the container.
 builder.Services.AddControllers();
@@ -14,8 +15,15 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 // No explicit AddSwaggerGen() or AddSwaggerUI() calls.
 
-// Add logging services. Still crucial for diagnostics.
-builder.Services.AddLogging();
+// >>> ADD THIS: replace the bare AddLogging() <<<
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();                 // shows in Azure Log Stream
+builder.Logging.AddDebug();                   // helpful locally
+
+// // Optional: rolling files under /home/LogFiles/Application
+// // dotnet add package Microsoft.Extensions.Logging.AzureAppServices
+// builder.Logging.AddAzureWebAppDiagnostics();
+// // (You can omit the package if you don't want files. Console is enough for Log Stream.)
 
 // Add MySQL Database Connection
 builder.Services.AddTransient<IDbConnection>(sp =>
