@@ -121,6 +121,9 @@ namespace OrbitFundAPIDotnetEight.Controllers
             string? videoUrlsString = null; // Initialize here
             string? docUrlsString = null;   // Initialize here
 
+            _logger.LogInformation("=== FILE UPLOAD DEBUG START ===");
+            _logger.LogInformation($"Total files received: {savedImageUrls.Count}");
+
             if (string.IsNullOrEmpty(_b2AccessKeyId) || string.IsNullOrEmpty(_b2ApplicationKey) ||
                 string.IsNullOrEmpty(_b2ServiceUrl) || string.IsNullOrEmpty(_b2BucketName))
             {
