@@ -105,4 +105,14 @@ app.UseAuthorization();
 // Maps controller actions.
 app.MapControllers();
 
+var startupLogger = app.Services.GetRequiredService<ILogger<Program>>();
+startupLogger.LogInformation("App started at {Utc}", DateTime.UtcNow);
+
+// Handy endpoint to force a log line
+app.MapGet("/diag/ping", (ILoggerFactory lf) => {
+    var log = lf.CreateLogger("Diag");
+    log.LogInformation("Ping at {Utc}", DateTime.UtcNow);
+    return Results.Ok(new { ok = true, utc = DateTime.UtcNow });
+});
+
 app.Run();
