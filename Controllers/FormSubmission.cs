@@ -19,7 +19,6 @@ namespace OrbitFundAPIDotnetEight.Controllers
         private readonly string? _b2ServiceUrl;
         private readonly string? _b2BucketName;
 
-
         public SubmissionController(ILogger<SubmissionController> logger, IConfiguration configuration)
         {
             _logger = logger;
